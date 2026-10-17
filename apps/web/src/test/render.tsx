@@ -3,6 +3,8 @@ import { render } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, createMemoryRouter, type RouteObject } from 'react-router';
 import { ThemeProvider } from '../lib/theme';
+import { AuthProvider } from '../lib/auth';
+import { resetCsrfToken } from '../lib/api/client';
 import { routes as appRoutes } from '../app/routes';
 
 export function testQueryClient() {
@@ -11,11 +13,14 @@ export function testQueryClient() {
 
 /** Renders the real route table at a path, with fresh providers. */
 export function renderRoute(path: string, routes: RouteObject[] = appRoutes) {
+  resetCsrfToken();
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   return render(
     <ThemeProvider>
       <QueryClientProvider client={testQueryClient()}>
-        <RouterProvider router={router} />
+        <AuthProvider>
+          <RouterProvider router={router} />
+        </AuthProvider>
       </QueryClientProvider>
     </ThemeProvider>,
   );

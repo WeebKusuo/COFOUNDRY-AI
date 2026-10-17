@@ -53,12 +53,54 @@ export interface RequestOptions {
   signal?: AbortSignal;
 }
 
-type CsrfProvider = () => string | null;
-let csrfProvider: CsrfProvider = () => null;
+/**
+ * CSRF synchronizer token (Section 22). Held in memory only. It is fetched lazily from
+ * GET /auth/csrf before the first mutation, cleared after sign-in/sign-out (the server rotates
+ * it), and refetched once if the server rejects it as stale — for example after another tab
+ * fetched a newer token for the same session.
+ */
+let csrfToken: string | null = null;
 
-/** Phase 2 registers the session CSRF token source here; mutations then send X-CSRF-Token. */
-export function setCsrfTokenProvider(provider: CsrfProvider): void {
-  csrfProvider = provider;
+type UnauthenticatedListener = (path: string) => void;
+const unauthenticatedListeners = new Set<UnauthenticatedListener>();
+
+/**
+ * Notified whenever an API call answers 401 UNAUTHENTICATED (expired, idle or revoked session).
+ * Sign-in failures are excluded — they are ordinary form errors.
+ */
+export function onUnauthenticated(listener: UnauthenticatedListener): () => void {
+  unauthenticatedListeners.add(listener);
+  return () => unauthenticatedListeners.delete(listener);
+}
+let csrfInFlight: Promise<string> | null = null;
+
+export function resetCsrfToken(): void {
+  csrfToken = null;
+  csrfInFlight = null;
+}
+
+async function fetchCsrfToken(): Promise<string> {
+  csrfInFlight ??= (async () => {
+    const payload = await rawRequest('/auth/csrf', { method: 'GET' });
+    const token = (payload as { data?: { csrfToken?: unknown } } | undefined)?.data?.csrfToken;
+    if (typeof token !== 'string') {
+      throw new ApiError({
+        status: 200,
+        code: 'INVALID_RESPONSE',
+        message: 'The server sent an unexpected response. Try again.',
+      });
+    }
+    csrfToken = token;
+    return token;
+  })().finally(() => {
+    csrfInFlight = null;
+  });
+  return csrfInFlight;
+}
+
+/** Exposed for tests: the token currently held in memory. */
+export function currentCsrfToken(): string | null {
+  return csrfToken;
 }
 
 export function buildUrl(path: string, query?: RequestOptions['query']): string {
@@ -75,12 +117,25 @@ export function buildUrl(path: string, query?: RequestOptions['query']): string 
 
 async function request(path: string, options: RequestOptions = {}): Promise<unknown> {
   const method = options.method ?? 'GET';
+  if (method === 'GET') return rawRequest(path, options);
+  const token = csrfToken ?? (await fetchCsrfToken());
+  try {
+    return await rawRequest(path, options, token);
+  } catch (err) {
+    if (!(err instanceof ApiError) || err.code !== 'CSRF_INVALID') throw err;
+    // The token may be stale (rotated by sign-in or another tab): fetch a fresh one, retry once.
+    csrfToken = null;
+    return rawRequest(path, options, await fetchCsrfToken());
+  }
+}
+
+async function rawRequest(path: string, options: RequestOptions, csrf?: string): Promise<unknown> {
+  const method = options.method ?? 'GET';
   const headers: Record<string, string> = { Accept: 'application/json', ...options.headers };
   let body: string | undefined;
   if (method !== 'GET') {
     headers['Content-Type'] = 'application/json';
     body = JSON.stringify(options.body ?? {});
-    const csrf = csrfProvider();
     if (csrf) headers['X-CSRF-Token'] = csrf;
   }
 
@@ -119,6 +174,9 @@ async function request(path: string, options: RequestOptions = {}): Promise<unkn
   if (!response.ok) {
     const retryAfter = Number(response.headers.get('Retry-After'));
     if (isApiErrorBody(payload)) {
+      if (payload.error.code === 'UNAUTHENTICATED' && path !== '/auth/login') {
+        for (const listener of unauthenticatedListeners) listener(path);
+      }
       throw new ApiError({
         status: response.status,
         code: payload.error.code,

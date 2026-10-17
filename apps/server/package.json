@@ -9,10 +9,12 @@
     "start": "node dist/index.js",
     "db:migrate": "tsx --env-file-if-exists=../../.env src/db/migrate-cli.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:seed": "tsx --env-file-if-exists=../../.env src/db/seed-cli.ts"
   },
   "dependencies": {
     "@cofoundry/shared": "0.1.0",
+    "@node-rs/argon2": "^2.2.2",
     "express": "^5.3.0",
     "express-rate-limit": "^8.7.1",
     "helmet": "^8.3.0",

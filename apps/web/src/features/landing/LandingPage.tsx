@@ -1,5 +1,6 @@
 import { Check, X } from 'lucide-react';
-import { ButtonLink, buttonClasses } from '../../components/ui';
+import { buttonClasses } from '../../components/ui';
+import { SessionCta } from '../../components/layout/SessionCta';
 import { FitLedger } from './FitLedger';
 
 const JOURNEY = [
@@ -57,9 +58,7 @@ export function LandingPage() {
             sprint before anyone commits further.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <ButtonLink to="/founder" size="lg">
-              Preview the founder workspace
-            </ButtonLink>
+            <SessionCta size="lg" />
             <a href="#journey" className={buttonClasses('secondary', 'lg')}>
               See how it works
             </a>

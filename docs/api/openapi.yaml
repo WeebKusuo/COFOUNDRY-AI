@@ -1,14 +1,16 @@
 openapi: 3.1.0
 info:
   title: CoFoundry AI API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Derived from Implementation Contract v3.0, Sections 17-21. This file grows phase by phase:
-    only routes that are implemented and tested are listed. Phase 1 implements liveness only.
+    only routes that are implemented and tested are listed (Phase 2: health, identity).
 
     Conventions (Section 17): JSON only; success `{data, requestId}`; list
     `{data, nextCursor, requestId}`; error `{error: {code, message, fieldErrors?}, requestId}`.
-    Mutations require an exact `Origin` (and, from Phase 2, `X-CSRF-Token`).
+    Every route except /health, GET /auth/csrf and POST /auth/login needs a signed-in session
+    cookie (401 UNAUTHENTICATED otherwise). Every mutation needs an exact `Origin` and the
+    session's `X-CSRF-Token` (403 CSRF_INVALID otherwise). Unknown body fields are rejected (422).
 servers:
   - url: /api/v1
 paths:
@@ -36,8 +38,133 @@ paths:
                     properties:
                       status: { type: string, const: ok }
                   requestId: { type: string, format: uuid }
+  /auth/csrf:
+    get:
+      summary: CSRF bootstrap (Section 22)
+      description: |
+        Creates a 15-minute anonymous session cookie when none exists, then returns a fresh
+        synchronizer token for the caller's session. Each call replaces the previous token.
+        Never cached. Limited to 30 requests/min per IP.
+      security: []
+      responses:
+        '200':
+          description: Token issued (Set-Cookie when a session was created)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, requestId]
+                properties:
+                  data:
+                    type: object
+                    required: [csrfToken]
+                    properties:
+                      csrfToken: { type: string }
+                  requestId: { type: string }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /auth/login:
+    post:
+      summary: Sign in with a provisioned account; rotates session and CSRF token
+      description: |
+        Requires the anonymous session's CSRF token and exact Origin. On success the old session
+        is deleted and a new cookie is set (8 h absolute, 30 min idle); the client must call
+        GET /auth/csrf again. Failures always return the same generic 401. Limits: 5 failed
+        attempts per account and 20 per IP per 15 minutes (429 with Retry-After).
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, password]
+              properties:
+                email: { type: string, minLength: 3, maxLength: 254 }
+                password: { type: string, minLength: 1, maxLength: 256 }
+      responses:
+        '200':
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, requestId]
+                properties:
+                  data:
+                    type: object
+                    required: [user]
+                    properties:
+                      user: { $ref: '#/components/schemas/SessionUser' }
+                  requestId: { type: string }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /auth/logout:
+    post:
+      summary: Revoke the current session and clear the cookie
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        '204': { description: Signed out }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+  /me:
+    get:
+      summary: The signed-in user's own identity
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, requestId]
+                properties:
+                  data:
+                    type: object
+                    required: [user, profileSummaries]
+                    properties:
+                      user: { $ref: '#/components/schemas/SessionUser' }
+                      profileSummaries:
+                        type: array
+                        description: Empty until profiles exist (Phase 3).
+                        items:
+                          type: object
+                          properties:
+                            role: { type: string, enum: [founder, candidate, moderator] }
+                            revision: { type: integer }
+                            complete: { type: boolean }
+                  requestId: { type: string }
+        '401': { $ref: '#/components/responses/Error' }
 components:
+  parameters:
+    CsrfHeader:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema: { type: string }
   schemas:
+    SessionUser:
+      type: object
+      required: [id, email, displayName, roles, accountMode, emailVerifiedAt]
+      properties:
+        id: { type: string, pattern: '^[a-f0-9]{24}$' }
+        email: { type: string }
+        displayName: { type: string }
+        roles:
+          type: array
+          items: { type: string, enum: [founder, candidate, moderator] }
+        accountMode: { type: string, enum: [demo, pilot] }
+        emailVerifiedAt: { type: [string, 'null'], format: date-time }
     ErrorCode:
       type: string
       enum:
@@ -80,6 +207,11 @@ components:
                 items: { type: string }
         requestId: { type: string, format: uuid }
   responses:
+    Error:
+      description: Standard error envelope
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
     NotFound:
       description: Unknown or unrelated resource
       content:

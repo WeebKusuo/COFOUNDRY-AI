@@ -1,19 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { mockFetch, renderRoute } from '../test/render';
+import { renderRoute } from '../test/render';
 import { DEV_FIXTURE, ledgerTotal } from '../features/landing/FitLedger';
 import { WORKSPACES } from '../features/workspace/nav';
+import { demoUser, installFakeApi } from '../test/fake-api';
 
+/** Healthy API with nobody signed in. */
 function apiOnline() {
-  vi.stubGlobal(
-    'fetch',
-    mockFetch((url) =>
-      url === '/api/v1/health'
-        ? { status: 200, body: { data: { status: 'ok' }, requestId: 'r' } }
-        : { status: 404, body: { error: { code: 'NOT_FOUND', message: 'nf' }, requestId: 'r' } },
-    ),
-  );
+  installFakeApi();
 }
 
 describe('landing page', () => {
@@ -62,26 +57,36 @@ describe('landing page', () => {
   });
 });
 
-describe('workspace layouts', () => {
+describe('workspace layouts (signed in)', () => {
   it.each(['founder', 'candidate', 'moderator'] as const)(
-    'renders the %s shell with every nav item and a preview banner',
-    (role) => {
-      apiOnline();
+    'renders the %s shell with every nav item, the user and a demo-account banner',
+    async (role) => {
+      installFakeApi({ user: demoUser([role], { displayName: `Demo ${role}` }) });
       const def = WORKSPACES[role];
       renderRoute(def.basePath);
-      const nav = screen.getAllByRole('navigation', { name: new RegExp(role, 'i') })[0]!;
+      const nav = (await screen.findAllByRole('navigation', { name: new RegExp(role, 'i') }))[0]!;
       for (const item of def.nav) {
         expect(within(nav).getByRole('link', { name: item.label })).toBeInTheDocument();
       }
       expect(screen.getByRole('heading', { level: 1, name: def.title })).toBeInTheDocument();
-      expect(screen.getByText(/Workspace preview\./)).toBeInTheDocument();
+      expect(screen.getByText(`Demo ${role}`)).toBeInTheDocument();
+      expect(screen.getByText('Demo account')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument();
     },
   );
 
-  it('marks the active nav item and shows an honest planned-screen state', () => {
-    apiOnline();
+  it('lists only workspaces the user holds a role for', async () => {
+    installFakeApi({ user: demoUser(['founder', 'candidate']) });
+    renderRoute('/founder');
+    const nav = (await screen.findAllByRole('navigation', { name: /founder/i }))[0]!;
+    expect(within(nav).getByRole('link', { name: 'Candidate' })).toBeInTheDocument();
+    expect(within(nav).queryByRole('link', { name: 'Moderator' })).not.toBeInTheDocument();
+  });
+
+  it('marks the active nav item and shows an honest planned-screen state', async () => {
+    installFakeApi({ user: demoUser(['founder']) });
     renderRoute('/founder/briefs');
-    const nav = screen.getAllByRole('navigation', { name: /founder/i })[0]!;
+    const nav = (await screen.findAllByRole('navigation', { name: /founder/i }))[0]!;
     expect(within(nav).getByRole('link', { name: 'Briefs' })).toHaveAttribute(
       'aria-current',
       'page',
@@ -93,9 +98,9 @@ describe('workspace layouts', () => {
   });
 
   it('opens and closes the mobile navigation', async () => {
-    apiOnline();
+    installFakeApi({ user: demoUser(['candidate']) });
     renderRoute('/candidate');
-    const toggle = screen.getByRole('button', { name: 'Open navigation' });
+    const toggle = await screen.findByRole('button', { name: 'Open navigation' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await userEvent.click(toggle);
     expect(screen.getByRole('button', { name: 'Close navigation' })).toHaveAttribute(

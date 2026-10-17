@@ -1,6 +1,9 @@
 import '@testing-library/jest-dom/vitest';
 import { afterEach, vi } from 'vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
+
+// Flows that type into fields and await navigation need more than the 1 s default.
+configure({ asyncUtilTimeout: 4000 });
 
 afterEach(() => {
   cleanup();

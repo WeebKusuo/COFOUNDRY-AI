@@ -7,6 +7,8 @@ import { createInternalApp } from './http/internal.js';
 import { checkTransactionSupport, closeMongo, connectMongo } from './db/mongo.js';
 import { getMigrationStatus } from './db/migrations.js';
 import { AiConfigError, createAiRegistry } from './ai/index.js';
+import { AuthService } from './auth/service.js';
+import { createMongoIdentityStore } from './auth/store.js';
 
 /**
  * Process entry point. Fails fast (exit 1) when configuration is invalid, MongoDB is unreachable,
@@ -46,7 +48,20 @@ async function main(): Promise<void> {
     logger.warn({ pending: migrations.pending }, 'pending migrations; run `npm run db:migrate`');
   }
 
-  const app = createApp({ config, logger });
+  const auth = new AuthService(createMongoIdentityStore(conn), {
+    sessionTtlSeconds: config.sessionTtlSeconds,
+  });
+  const app = createApp({ config, logger, auth });
+
+  // Session sweeper: removes expired and idle sessions every 5 minutes (validity is still
+  // checked on every request, so the sweep only keeps the collection small).
+  const sweep = setInterval(() => {
+    auth
+      .purgeExpiredSessions()
+      .then((removed) => removed > 0 && logger.info({ removed }, 'expired sessions purged'))
+      .catch((err: unknown) => logger.warn({ err }, 'session sweep failed'));
+  }, 5 * 60_000);
+  sweep.unref();
   const server = http.createServer(app);
   // Bound slow clients; keep-alive shorter than typical proxy idle timeouts is set by the proxy.
   server.requestTimeout = 30_000;
@@ -72,6 +87,7 @@ async function main(): Promise<void> {
       new Promise<void>((resolve) => (s ? s.close(() => resolve()) : resolve()));
     const force = setTimeout(() => process.exit(1), 10_000);
     force.unref();
+    clearInterval(sweep);
     const serversClosed = Promise.all([close(server), close(internal)]);
     server.closeIdleConnections();
     await serversClosed;

@@ -3,8 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
-import { createApp } from '../src/http/app.js';
-import { silentLogger, testConfig } from './helpers.js';
+import { buildHarness } from './support/harness.js';
 
 let dist: string;
 
@@ -18,10 +17,7 @@ beforeAll(() => {
 afterAll(() => fs.rmSync(dist, { recursive: true, force: true }));
 
 function app() {
-  return createApp({
-    config: testConfig({ serveWeb: true, webDistDir: dist }),
-    logger: silentLogger,
-  });
+  return buildHarness({ config: { serveWeb: true, webDistDir: dist } }).app;
 }
 
 describe('same-origin SPA hosting', () => {
@@ -51,9 +47,11 @@ describe('same-origin SPA hosting', () => {
   });
 
   it('never applies the SPA fallback to /api', async () => {
-    const res = await request(app()).get('/api/v1/unknown').set('Accept', 'text/html');
+    const res = await request(app()).get('/api/v2/unknown').set('Accept', 'text/html');
     expect(res.status).toBe(404);
     expect(res.headers['content-type']).toContain('application/json');
     expect(res.body.error.code).toBe('NOT_FOUND');
+    const v1 = await request(app()).get('/api/v1/unknown').set('Accept', 'text/html');
+    expect(v1.headers['content-type']).toContain('application/json');
   });
 });

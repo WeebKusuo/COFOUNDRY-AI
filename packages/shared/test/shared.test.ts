@@ -5,6 +5,7 @@ import {
   SKILL_IDS,
   checkHttpsUrl,
   isApiErrorBody,
+  normalizeEmail,
   normalizeText,
   resolveSkillId,
 } from '../src/index.js';
@@ -88,5 +89,12 @@ describe('isApiErrorBody', () => {
     );
     expect(isApiErrorBody({ error: { code: 'MADE_UP', message: 'x' } })).toBe(false);
     expect(isApiErrorBody(null)).toBe(false);
+  });
+});
+
+describe('normalizeEmail', () => {
+  it('trims, lowercases and applies NFKC so one account has one key', () => {
+    expect(normalizeEmail('  Founder@Demo.CoFoundry.TEST ')).toBe('founder@demo.cofoundry.test');
+    expect(normalizeEmail('ｆounder@x.test')).toBe('founder@x.test');
   });
 });

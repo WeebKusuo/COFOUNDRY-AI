@@ -34,6 +34,30 @@ export const MIGRATIONS: readonly Migration[] = [
       await ensureCollection(conn, CAPABILITY_COLLECTION);
     },
   },
+  {
+    version: 2,
+    name: 'identity-users-sessions',
+    up: async (conn) => {
+      // Section 14: unique emailLower; unique tokenHash; index expiresAt. Expired and idle sessions
+      // are removed by the session sweeper (AuthService.purgeExpiredSessions) — an explicit job
+      // rather than a TTL index, so idle expiry (lastSeenAt) is purged by the same rule.
+      await ensureCollection(conn, 'users');
+      await ensureCollection(conn, 'sessions');
+      const db = conn.db;
+      if (!db) throw new Error('database not connected');
+      const users = db.collection('users');
+      await users.createIndex({ emailLower: 1 }, { unique: true, name: 'emailLower_unique' });
+      await users.createIndex(
+        { seedKey: 1 },
+        { unique: true, sparse: true, name: 'seedKey_unique' },
+      );
+      const sessions = db.collection('sessions');
+      await sessions.createIndex({ tokenHash: 1 }, { unique: true, name: 'tokenHash_unique' });
+      await sessions.createIndex({ expiresAt: 1 }, { name: 'expiresAt' });
+      await sessions.createIndex({ lastSeenAt: 1 }, { name: 'lastSeenAt' });
+      await sessions.createIndex({ userId: 1 }, { name: 'userId' });
+    },
+  },
 ];
 
 export const LATEST_MIGRATION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);

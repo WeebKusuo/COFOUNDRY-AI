@@ -1,13 +1,29 @@
 import { Router } from 'express';
 import type { HealthData } from '@cofoundry/shared';
+import type { CookieSettings } from '../../auth/cookies.js';
+import type { AuthService } from '../../auth/service.js';
+import { requireCsrf, requireSignedInExcept } from '../middleware/auth.js';
+import type { AuthRateLimiters } from '../middleware/rate-limit.js';
 import { sendData } from '../respond.js';
+import { PUBLIC_ROUTES, createAuthRouter } from './auth.js';
+
+export interface V1Options {
+  auth: AuthService;
+  cookies: CookieSettings;
+  limiters: AuthRateLimiters;
+  /** Test-only routes, mounted behind the same CSRF and deny-by-default guards. */
+  extraRoutes?: (router: Router) => void;
+}
 
 /**
- * /api/v1 router. Phase 1 exposes liveness only; feature routes (Sections 18-21) are added in
- * their own phases and documented in the OpenAPI specification as they land.
+ * /api/v1 router. Every mutation needs a valid CSRF token, and every route needs a signed-in
+ * session unless it is listed in PUBLIC_ROUTES. Feature routes (Sections 18-21) are added in
+ * their own phases and documented in docs/api/openapi.yaml as they land.
  */
-export function createV1Router(): Router {
+export function createV1Router(options: V1Options): Router {
   const router = Router();
+  router.use(requireCsrf);
+  router.use(requireSignedInExcept(PUBLIC_ROUTES));
 
   // Section 18: GET /health — public liveness only, no internals.
   router.get('/health', (_req, res) => {
@@ -15,5 +31,7 @@ export function createV1Router(): Router {
     sendData(res, data);
   });
 
+  router.use(createAuthRouter(options.auth, options.cookies, options.limiters));
+  options.extraRoutes?.(router);
   return router;
 }

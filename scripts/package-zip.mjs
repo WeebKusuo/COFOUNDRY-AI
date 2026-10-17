@@ -22,6 +22,8 @@ const EXCLUDED_DIRS = new Set([
   '.idea',
   '.vscode',
   '.turbo',
+  'test-results',
+  'playwright-report',
 ]);
 const EXCLUDED_FILES = [
   /^\.env$/,

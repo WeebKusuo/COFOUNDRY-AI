@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ApiError, api, buildUrl, setCsrfTokenProvider } from './client';
+import {
+  ApiError,
+  api,
+  buildUrl,
+  currentCsrfToken,
+  onUnauthenticated,
+  resetCsrfToken,
+} from './client';
 import { mockFetch } from '../../test/render';
 
 describe('buildUrl', () => {
@@ -91,24 +98,118 @@ describe('api.get', () => {
   });
 });
 
-describe('api.send', () => {
-  it('sends JSON with an empty {} body by default and the CSRF token when registered', async () => {
+describe('api.send and CSRF', () => {
+  const ok = (data: unknown) => ({ status: 200, body: { data, requestId: 'r' } });
+
+  it('fetches a CSRF token first, then sends JSON with X-CSRF-Token', async () => {
+    resetCsrfToken();
     const fetchSpy = vi.fn(
-      mockFetch(() => ({ status: 200, body: { data: { ok: true }, requestId: 'r' } })),
+      mockFetch((url) =>
+        url === '/api/v1/auth/csrf' ? ok({ csrfToken: 'tok-1' }) : ok({ ok: true }),
+      ),
     );
     vi.stubGlobal('fetch', fetchSpy);
-    setCsrfTokenProvider(() => 'csrf-123');
     await api.send('POST', '/startups/1/close');
-    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    expect(fetchSpy.mock.calls.map((c) => c[0])).toEqual([
+      '/api/v1/auth/csrf',
+      '/api/v1/startups/1/close',
+    ]);
+    const init = fetchSpy.mock.calls[1]?.[1] as RequestInit;
     const headers = init.headers as Record<string, string>;
     expect(init.body).toBe('{}');
     expect(headers['Content-Type']).toBe('application/json');
-    expect(headers['X-CSRF-Token']).toBe('csrf-123');
-    setCsrfTokenProvider(() => null);
+    expect(headers['X-CSRF-Token']).toBe('tok-1');
+    expect(currentCsrfToken()).toBe('tok-1');
+  });
+
+  it('reuses the cached token and never sends it on GET', async () => {
+    const fetchSpy = vi.fn(mockFetch(() => ok({ ok: true })));
+    vi.stubGlobal('fetch', fetchSpy);
+    await api.get('/me');
+    await api.send('PUT', '/x', { a: 1 });
+    expect(fetchSpy.mock.calls.map((c) => c[0])).toEqual(['/api/v1/me', '/api/v1/x']);
+    const getHeaders = (fetchSpy.mock.calls[0]?.[1] as RequestInit).headers as Record<
+      string,
+      string
+    >;
+    expect(getHeaders['X-CSRF-Token']).toBeUndefined();
+  });
+
+  it('refetches the token once and retries when the server rejects it as stale', async () => {
+    resetCsrfToken();
+    let csrfCalls = 0;
+    let postCalls = 0;
+    const fetchSpy = vi.fn(
+      mockFetch((url, init) => {
+        if (url === '/api/v1/auth/csrf') {
+          csrfCalls += 1;
+          return ok({ csrfToken: `tok-${csrfCalls}` });
+        }
+        postCalls += 1;
+        const token = (init?.headers as Record<string, string>)['X-CSRF-Token'];
+        return token === 'tok-2'
+          ? ok({ done: true })
+          : {
+              status: 403,
+              body: { error: { code: 'CSRF_INVALID', message: 'stale' }, requestId: 'r' },
+            };
+      }),
+    );
+    vi.stubGlobal('fetch', fetchSpy);
+    await expect(api.send('POST', '/thing')).resolves.toEqual({ done: true });
+    expect(csrfCalls).toBe(2);
+    expect(postCalls).toBe(2);
+  });
+
+  it('does not loop when the retry is also rejected', async () => {
+    resetCsrfToken();
+    const fetchSpy = vi.fn(
+      mockFetch((url) =>
+        url === '/api/v1/auth/csrf'
+          ? ok({ csrfToken: 'tok' })
+          : {
+              status: 403,
+              body: { error: { code: 'CSRF_INVALID', message: 'no' }, requestId: 'r' },
+            },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchSpy);
+    const err = (await api.send('POST', '/thing').catch((e: unknown) => e)) as ApiError;
+    expect(err.code).toBe('CSRF_INVALID');
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
   });
 
   it('returns undefined for 204 No Content', async () => {
-    vi.stubGlobal('fetch', async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) =>
+      String(input).endsWith('/auth/csrf')
+        ? new Response(JSON.stringify({ data: { csrfToken: 't' }, requestId: 'r' }), {
+            status: 200,
+          })
+        : new Response(null, { status: 204 }),
+    );
     await expect(api.send('DELETE', '/blocks/abc')).resolves.toBeUndefined();
+  });
+});
+
+describe('unauthenticated notifications', () => {
+  it('notifies listeners on 401 except for the sign-in call itself', async () => {
+    resetCsrfToken();
+    const seen: string[] = [];
+    const off = onUnauthenticated((path) => seen.push(path));
+    vi.stubGlobal(
+      'fetch',
+      mockFetch((url) =>
+        url === '/api/v1/auth/csrf'
+          ? { status: 200, body: { data: { csrfToken: 't' }, requestId: 'r' } }
+          : {
+              status: 401,
+              body: { error: { code: 'UNAUTHENTICATED', message: 'x' }, requestId: 'r' },
+            },
+      ),
+    );
+    await api.get('/me').catch(() => undefined);
+    await api.send('POST', '/auth/login', { email: 'a', password: 'b' }).catch(() => undefined);
+    off();
+    expect(seen).toEqual(['/me']);
   });
 });

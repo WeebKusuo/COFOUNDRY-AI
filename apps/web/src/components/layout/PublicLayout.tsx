@@ -4,7 +4,7 @@ import { Logo } from '../brand/Logo';
 import { ApiStatus } from './ApiStatus';
 import { SkipLink } from './SkipLink';
 import { ThemeToggle } from './ThemeToggle';
-import { ButtonLink } from '../ui';
+import { SessionCta } from './SessionCta';
 
 export function PublicLayout() {
   return (
@@ -21,9 +21,7 @@ export function PublicLayout() {
               How it works
             </a>
             <ThemeToggle />
-            <ButtonLink to="/founder" size="sm" variant="secondary" className="max-sm:hidden">
-              Preview workspaces
-            </ButtonLink>
+            <SessionCta size="sm" variant="secondary" />
           </nav>
         </div>
       </header>
