@@ -1,0 +1,41 @@
+{
+  "name": "cofoundry-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CoFoundry AI — early-team formation for startups (Implementation Contract v3.0)",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=10"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c blue,magenta \"npm run dev -w @cofoundry/server\" \"npm run dev -w @cofoundry/web\"",
+    "build": "npm run build -w @cofoundry/web && npm run build -w @cofoundry/server",
+    "start": "node apps/server/dist/index.js",
+    "db:migrate": "npm run db:migrate -w @cofoundry/server",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build",
+    "package:zip": "node scripts/package-zip.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.20.5",
+    "concurrently": "^10.0.6",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.2"
+  }
+}
