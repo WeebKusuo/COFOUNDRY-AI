@@ -45,7 +45,13 @@ export interface FounderProfileDoc {
   updatedAt: Date;
 }
 
-export const CONSENT_PURPOSES = ['profile_discovery', 'assessment', 'brief_access'] as const;
+/** Section 14 purposes plus resume_processing (Phase 4 amendment: resume upload consent). */
+export const CONSENT_PURPOSES = [
+  'profile_discovery',
+  'assessment',
+  'brief_access',
+  'resume_processing',
+] as const;
 export type ConsentPurpose = (typeof CONSENT_PURPOSES)[number];
 
 export interface ConsentRecordDoc {

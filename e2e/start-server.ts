@@ -4,6 +4,7 @@
  * E2E_MONGODB_URI), migrated and seeded with the demo accounts. Started by Playwright's webServer.
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +18,16 @@ import { createMongoIdentityStore } from '../apps/server/src/auth/store.js';
 import { ProfileService } from '../apps/server/src/profiles/service.js';
 import { createMongoProfileStore } from '../apps/server/src/profiles/store.js';
 import { createApp } from '../apps/server/src/http/app.js';
+import { createRateLimiter } from '../apps/server/src/http/middleware/rate-limit.js';
+import { BriefService } from '../apps/server/src/briefs/service.js';
+import {
+  createMongoBriefStore,
+  createMongoIdempotencyStore,
+} from '../apps/server/src/briefs/store.js';
+import { ResumeService } from '../apps/server/src/resumes/service.js';
+import { createPdfTextExtractor } from '../apps/server/src/resumes/extract.js';
+import { createLocalFileStorage } from '../apps/server/src/resumes/storage.js';
+import { createMongoResumeStore } from '../apps/server/src/resumes/store.js';
 import { E2E_PASSWORD, E2E_PORT, STATE_FILE } from './shared.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -35,6 +46,10 @@ async function main() {
     throw new Error('apps/web/dist is missing; run `npm run build` first.');
   }
 
+  // Real local-disk resume storage in a fresh temporary directory.
+  const resumeDir = path.join(os.tmpdir(), 'cofoundry-e2e-resumes');
+  fs.rmSync(resumeDir, { recursive: true, force: true });
+
   const config = loadConfig({
     NODE_ENV: 'development',
     PORT: String(E2E_PORT),
@@ -44,6 +59,7 @@ async function main() {
     DEMO_MODE: 'true',
     SERVE_WEB: 'true',
     WEB_DIST_DIR: webDistDir,
+    RESUME_STORAGE_DIR: resumeDir,
     LOG_LEVEL: 'warn',
   });
   const logger = createLogger(config.logLevel, { component: 'e2e' });
@@ -54,8 +70,32 @@ async function main() {
 
   const identity = createMongoIdentityStore(conn);
   const auth = new AuthService(identity, { sessionTtlSeconds: config.sessionTtlSeconds });
-  const profiles = new ProfileService(createMongoProfileStore(conn), identity);
-  const server = http.createServer(createApp({ config, logger, auth, profiles }));
+  const profileStore = createMongoProfileStore(conn);
+  const profiles = new ProfileService(profileStore, identity);
+  const briefs = new BriefService(createMongoBriefStore(conn), identity, profileStore);
+  const idempotency = createMongoIdempotencyStore(conn);
+  const resumes = new ResumeService(
+    createMongoResumeStore(conn),
+    createLocalFileStorage(config.resumeStorageDir),
+    profileStore,
+    createPdfTextExtractor(),
+    logger,
+  );
+  const server = http.createServer(
+    createApp({
+      config,
+      logger,
+      auth,
+      profiles,
+      briefs,
+      idempotency,
+      resumes,
+      // The suite signs in dozens of times per minute from one IP. Only the CSRF bootstrap limit
+      // is raised here; its real 30/min value is covered by apps/server/test/rate-limits.test.ts,
+      // and every other limit (login, general, uploads) keeps its production value.
+      rateLimiters: { csrf: createRateLimiter({ windowMs: 60_000, limit: 600 }) },
+    }),
+  );
   await new Promise<void>((resolve) => server.listen(E2E_PORT, resolve));
   fs.writeFileSync(STATE_FILE, JSON.stringify({ mongodbUri: uri }));
   process.stdout.write(`e2e server ready on http://localhost:${E2E_PORT}\n`);

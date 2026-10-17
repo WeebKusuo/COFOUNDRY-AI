@@ -36,7 +36,7 @@ describe('migrations', () => {
   });
 
   it('applies pending migrations once and is idempotent', async () => {
-    expect(await runMigrations(db.conn, silentLogger)).toEqual([1, 2, 3]);
+    expect(await runMigrations(db.conn, silentLogger)).toEqual([1, 2, 3, 4, 5]);
     expect(await runMigrations(db.conn, silentLogger)).toEqual([]);
     const status = await getMigrationStatus(db.conn);
     expect(status).toMatchObject({ current: LATEST_MIGRATION, upToDate: true, pending: [] });

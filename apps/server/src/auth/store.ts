@@ -33,6 +33,8 @@ export type NewSession = Omit<SessionRecord, 'id'>;
 export interface IdentityStore {
   findUserByEmail(emailLower: string): Promise<UserRecord | null>;
   findUserById(id: string): Promise<UserRecord | null>;
+  /** Ids of active users holding `role` in a cohort (discovery scope; cohorts are small). */
+  listActiveUserIdsInCohort(cohortId: string, role: UserRole): Promise<string[]>;
   createSession(session: NewSession): Promise<SessionRecord>;
   findSessionByTokenHash(tokenHash: string): Promise<SessionRecord | null>;
   touchSession(id: string, lastSeenAt: Date): Promise<void>;
@@ -85,6 +87,12 @@ export function createMongoIdentityStore(conn: Connection): IdentityStore {
       if (!isObjectId(id)) return null;
       const doc = await User.findById(id).lean<UserDoc>().exec();
       return doc ? toUser(doc) : null;
+    },
+    async listActiveUserIdsInCohort(cohortId, role) {
+      const docs = await User.find({ cohortId, roles: role, status: 'active' }, { _id: 1 })
+        .lean<Array<{ _id: mongoose.Types.ObjectId }>>()
+        .exec();
+      return docs.map((d) => d._id.toHexString());
     },
     async createSession(session) {
       const doc = await Session.create({

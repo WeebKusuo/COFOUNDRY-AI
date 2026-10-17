@@ -15,12 +15,20 @@
  *  - Credentials stay server-side; only metadata (provider, model, latency, tokens, error code) is
  *    logged — never prompts, answers or media.
  *
- * The input/output shapes below are DRAFTS. The updated AI interview contract supersedes them
- * before the interview phases; change them there together with their tests.
+ * Question generation and adaptive follow-up use the versioned contracts in
+ * packages/shared/src/interview.ts (Phase 4). The evaluation/speech/video inputs below remain
+ * drafts until their phases; change them there together with their tests.
+ *
+ * Model policy (Phase 4 amendment): every model or AI tool adopted later must be free,
+ * open-source, reasonably well-performing and preferably self-hostable, with its licence and
+ * commercial-use terms verified and recorded before it is registered.
  */
+
+import type { FollowUpGenerationInput, ResumeQuestionGenerationInput } from '@cofoundry/shared';
 
 export const AI_CAPABILITIES = [
   'question_generation',
+  'follow_up_generation',
   'technical_evaluation',
   'language_evaluation',
   'speech_analysis',
@@ -99,17 +107,14 @@ export interface AdapterOutput {
 // Draft capability inputs. Outputs are validated with zod schemas owned by each phase.
 // ---------------------------------------------------------------------------------------------
 
-/** Question generation / cross-questioning (AI team's fine-tuned model). */
-export interface QuestionGenerationInput {
-  roleKey: string;
-  /** Candidate-approved, PII-stripped resume/profile summary. */
-  profileSummary: string;
-  /** Earlier question/answer pairs in this session, oldest first. */
-  history: Array<{ questionId: string; question: string; answer: string }>;
-  /** What to generate next. */
-  kind: 'next_question' | 'follow_up';
-  sourceQuestionId?: string;
-}
+/**
+ * Resume-based question generation (user's fine-tuned API). Built by
+ * src/interviews/resume-question-input.ts from redacted resume text and skill data only.
+ */
+export type QuestionGenerationInput = ResumeQuestionGenerationInput;
+
+/** Adaptive cross-questioning from one question and its one answer (user's fine-tuned API). */
+export type FollowUpInput = FollowUpGenerationInput;
 
 /** Technical evaluation of one answer against a fixed question and rubric. */
 export interface TechnicalEvaluationInput {
@@ -154,6 +159,7 @@ export interface CrossValidationInput {
 
 export interface CapabilityInputs {
   question_generation: QuestionGenerationInput;
+  follow_up_generation: FollowUpInput;
   technical_evaluation: TechnicalEvaluationInput;
   language_evaluation: LanguageEvaluationInput;
   speech_analysis: SpeechAnalysisInput;

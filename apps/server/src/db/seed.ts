@@ -1,11 +1,19 @@
 import mongoose, { type Connection } from 'mongoose';
-import { PROFILE_DISCLOSURE_POLICY_VERSION } from '@cofoundry/shared';
+import {
+  PROFILE_DISCLOSURE_POLICY_VERSION,
+  briefPublishGaps,
+  hasSkillGap,
+} from '@cofoundry/shared';
+import { briefModels } from '../briefs/models.js';
+import { BRIEF_CONSTANTS } from '../briefs/store.js';
+import { resumeModel } from '../resumes/models.js';
 import { assertPasswordPolicy, hashPassword, verifyPassword } from '../auth/crypto.js';
 import { identityModels } from '../auth/models.js';
 import type { Logger } from '../lib/logger.js';
 import { consentActiveKey, profileModels } from '../profiles/models.js';
 import {
   DEMO_ACCOUNTS,
+  DEMO_BRIEFS,
   DEMO_CANDIDATE_PROFILES,
   DEMO_COHORT_ID,
   DEMO_FOUNDER_PROFILES,
@@ -21,6 +29,8 @@ export interface SeedOptions {
   /** Delete all demo accounts (and their sessions) first. Requires explicit confirmation. */
   reset?: boolean;
   accounts?: readonly DemoAccount[];
+  /** Removes a stored resume file on reset (resume originals live outside MongoDB). */
+  deleteResumeFile?: (storageKey: string) => Promise<void>;
 }
 
 export interface SeedSummary {
@@ -29,6 +39,7 @@ export interface SeedSummary {
   unchanged: string[];
   removed: number;
   profilesCreated: number;
+  briefsCreated: number;
 }
 
 /**
@@ -61,6 +72,7 @@ export async function seedDemoAccounts(
     unchanged: [],
     removed: 0,
     profilesCreated: 0,
+    briefsCreated: 0,
   };
   const { CandidateProfile, FounderProfile, ConsentRecord } = profileModels(conn);
 
@@ -71,6 +83,20 @@ export async function seedDemoAccounts(
     await CandidateProfile.deleteMany({ userId: { $in: ids } }).exec();
     await FounderProfile.deleteMany({ userId: { $in: ids } }).exec();
     await ConsentRecord.deleteMany({ userId: { $in: ids } }).exec();
+    const { StartupBrief, IdempotencyRecord } = briefModels(conn);
+    await StartupBrief.deleteMany({ founderUserId: { $in: ids } }).exec();
+    await IdempotencyRecord.deleteMany({ actorUserId: { $in: ids } }).exec();
+    const Resume = resumeModel(conn);
+    const resumes = await Resume.find(
+      { userId: { $in: ids }, current: { $ne: null } },
+      { 'current.storageKey': 1 },
+    )
+      .lean<Array<{ current: { storageKey?: string } | null }>>()
+      .exec();
+    for (const r of resumes) {
+      if (r.current?.storageKey) await options.deleteResumeFile?.(r.current.storageKey);
+    }
+    await Resume.deleteMany({ userId: { $in: ids } }).exec();
     const res = await User.deleteMany({ _id: { $in: ids } }).exec();
     summary.removed = res.deletedCount;
     logger.info({ removed: summary.removed }, 'demo accounts removed');
@@ -133,6 +159,7 @@ export async function seedDemoAccounts(
     }
   }
   summary.profilesCreated = await seedDemoProfiles(conn, options.accounts ?? DEMO_ACCOUNTS);
+  summary.briefsCreated = await seedDemoBriefs(conn);
   return summary;
 }
 
@@ -196,6 +223,38 @@ async function seedDemoProfiles(
       await FounderProfile.create({ userId: user._id, revision: 1, ...founder });
       created += 1;
     }
+  }
+  return created;
+}
+
+/**
+ * Creates the Section 26 briefs that do not exist yet (by seedKey) as published version 1.
+ * Existing briefs are never modified: published briefs are immutable.
+ */
+async function seedDemoBriefs(conn: Connection): Promise<number> {
+  const { User } = identityModels(conn);
+  const { StartupBrief } = briefModels(conn);
+  let created = 0;
+  for (const brief of DEMO_BRIEFS) {
+    if (await StartupBrief.exists({ seedKey: brief.seedKey })) continue;
+    const founder = await User.findOne({ seedKey: brief.founderSeedKey }, { _id: 1 }).lean().exec();
+    if (!founder) continue;
+    if (briefPublishGaps(brief.fields).length > 0 || !hasSkillGap(brief.fields)) {
+      throw new Error(`Demo brief ${brief.seedKey} does not pass the publish validator.`);
+    }
+    await StartupBrief.create({
+      seedKey: brief.seedKey,
+      founderUserId: founder._id,
+      status: 'open',
+      version: 1,
+      transitionRevision: 1,
+      ...BRIEF_CONSTANTS,
+      ...brief.fields,
+      publishedAt: new Date(),
+      closedAt: null,
+      closeReason: null,
+    });
+    created += 1;
   }
   return created;
 }

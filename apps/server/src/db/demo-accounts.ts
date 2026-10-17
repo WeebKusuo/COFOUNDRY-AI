@@ -1,4 +1,10 @@
-import type { IndustryTag, MissionTag, SkillId, UserRole } from '@cofoundry/shared';
+import type {
+  BriefDraftFields,
+  IndustryTag,
+  MissionTag,
+  SkillId,
+  UserRole,
+} from '@cofoundry/shared';
 
 /**
  * Seeded demo identities (Section 26). These are shared demo accounts for the controlled demo,
@@ -146,3 +152,53 @@ export const DEMO_FOUNDER_PROFILES: Readonly<
     companyUrl: 'https://paypilot.example',
   },
 };
+
+/**
+ * Section 26 PayPilot brief: contributor/backend-node-v1; remote; hours 8, months 3;
+ * mandatoryAvailability=true, mandatoryCommitment=false; fintech; reliability + automation;
+ * Node 4 / importance 2 / team 2 / preferred; REST 3 / importance 1 / team 0 / mandatory;
+ * paid INR 2,000 (amountMinor 200000), due 7 days, method note as specified; creator-owned IP.
+ * Title, teaser, problem and solution are fixture text (the contract does not prescribe them).
+ */
+export interface DemoBrief {
+  seedKey: string;
+  founderSeedKey: string;
+  fields: BriefDraftFields;
+}
+
+export const DEMO_BRIEFS: readonly DemoBrief[] = [
+  {
+    seedKey: 'demo:brief:paypilot',
+    founderSeedKey: 'demo:founder:paypilot',
+    fields: {
+      title: 'PayPilot payment reconciliation API',
+      teaser:
+        'PayPilot helps small Indian businesses match UPI and bank payments to invoices. We need a backend contributor to harden our Node.js reconciliation API in a bounded trial.',
+      problem:
+        'Small merchants reconcile UPI and bank-transfer payments by hand. Our current matching service misses partial payments and processes repeated webhooks inconsistently, so merchants see duplicate or missing ledger entries.',
+      solution:
+        'A REST reconciliation service in Node.js with idempotent webhook ingestion, partial-payment matching rules and an audit trail, backed by MongoDB. The trial focuses on the webhook ingestion path.',
+      industryTags: ['fintech'],
+      missionTags: ['reliability', 'automation'],
+      teamSkills: [
+        { skillId: 'nodejs', level: 2 },
+        { skillId: 'rest-api', level: 0 },
+      ],
+      requiredSkills: [
+        { skillId: 'nodejs', level: 4, importance: 2, mandatory: false },
+        { skillId: 'rest-api', level: 3, importance: 1, mandatory: true },
+      ],
+      hoursRequiredPerWeek: 8,
+      commitmentMonths: 3,
+      mandatoryAvailability: true,
+      mandatoryCommitment: false,
+      compensation: {
+        type: 'paid',
+        amountMinor: 200_000,
+        paymentDueDays: 7,
+        methodNote: 'External bank/UPI transfer agreed directly.',
+        benefitDescription: '',
+      },
+    },
+  },
+];

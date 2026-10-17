@@ -17,6 +17,7 @@ export interface FakeApiOptions {
     method: string,
     path: string,
     body: unknown,
+    headers: Record<string, string>,
   ) => { status: number; body?: unknown } | undefined;
 }
 
@@ -96,10 +97,12 @@ export function installFakeApi(options: FakeApiOptions = {}) {
     if (path === '/me') {
       return json(200, { data: { user: state.user, profileSummaries: [] }, requestId: 'req' });
     }
+    const rawBody = init?.body;
     const extra = options.routes?.(
       method,
       path,
-      init?.body ? JSON.parse(String(init.body)) : undefined,
+      rawBody instanceof Blob ? rawBody : rawBody ? JSON.parse(String(rawBody)) : undefined,
+      headers,
     );
     if (extra) {
       return extra.body === undefined

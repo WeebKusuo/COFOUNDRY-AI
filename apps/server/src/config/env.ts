@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
@@ -37,6 +38,8 @@ export interface AppConfig {
   /** Serve the built SPA from webDistDir (on by default in production). */
   serveWeb: boolean;
   webDistDir: string;
+  /** Private directory for resume originals; never inside webDistDir (Phase 4). */
+  resumeStorageDir: string;
 }
 
 export class ConfigError extends Error {
@@ -81,15 +84,38 @@ const rawSchema = z.object({
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
   SERVE_WEB: boolString.optional(),
   WEB_DIST_DIR: z.string().optional(),
+  RESUME_STORAGE_DIR: z.string().optional(),
 });
 
-function defaultWebDistDir(): string {
-  // Works from both src/config (tsx) and dist (bundled): resolve apps/web/dist from apps/server.
+function serverRoot(): string {
+  // Works from both src/config (tsx) and dist (bundled).
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const serverRoot = here.includes(`${path.sep}src${path.sep}`)
+  return here.includes(`${path.sep}src${path.sep}`)
     ? path.resolve(here, '..', '..')
     : path.resolve(here, '..');
-  return path.resolve(serverRoot, '..', 'web', 'dist');
+}
+
+function defaultWebDistDir(): string {
+  return path.resolve(serverRoot(), '..', 'web', 'dist');
+}
+
+/** Development default: apps/server/var/resumes (git-ignored, excluded from release ZIPs). */
+function defaultResumeStorageDir(): string {
+  return path.resolve(serverRoot(), 'var', 'resumes');
+}
+
+/** Resolves symlinks for paths that exist, so a linked directory cannot bypass the check. */
+function realOrResolved(p: string): string {
+  try {
+    return fs.realpathSync.native(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
+function isInside(child: string, parent: string): boolean {
+  const rel = path.relative(parent, child);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
 /** Normalise and validate an origin string; returns null when it is not a bare origin. */
@@ -145,6 +171,18 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     problems.push(`LLM_PROVIDER "${provider}" is not allowed in production`);
   }
 
+  const webDistDir = raw.WEB_DIST_DIR ? path.resolve(raw.WEB_DIST_DIR) : defaultWebDistDir();
+  const resumeDirRaw = raw.RESUME_STORAGE_DIR?.trim();
+  if (isProduction && !resumeDirRaw) {
+    problems.push('RESUME_STORAGE_DIR is required in production (a private, persistent directory)');
+  }
+  const resumeStorageDir = resumeDirRaw ? path.resolve(resumeDirRaw) : defaultResumeStorageDir();
+  const realResume = realOrResolved(resumeStorageDir);
+  const realWeb = realOrResolved(webDistDir);
+  if (isInside(realResume, realWeb) || isInside(realWeb, realResume)) {
+    problems.push('RESUME_STORAGE_DIR must be outside the served web directory');
+  }
+
   if (problems.length > 0) throw new ConfigError(problems);
 
   return {
@@ -164,7 +202,8 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     logLevel: raw.LOG_LEVEL ?? (raw.NODE_ENV === 'test' ? 'silent' : 'info'),
     trustProxyHops: raw.TRUST_PROXY_HOPS,
     serveWeb: raw.SERVE_WEB ?? isProduction,
-    webDistDir: raw.WEB_DIST_DIR ? path.resolve(raw.WEB_DIST_DIR) : defaultWebDistDir(),
+    webDistDir,
+    resumeStorageDir,
   };
 }
 

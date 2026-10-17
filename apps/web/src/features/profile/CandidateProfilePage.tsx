@@ -46,6 +46,7 @@ import {
   type ProjectDraft,
 } from './draft';
 import { ProfilePreview } from './ProfilePreview';
+import { ResumeSection } from '../resume/ResumeSection';
 
 const SKILL_OPTIONS = SKILL_IDS.map((id) => ({ value: id, label: SKILL_LABELS[id] }));
 const INDUSTRY_OPTIONS = INDUSTRY_TAGS.map((t) => ({ value: t, label: INDUSTRY_LABELS[t] }));
@@ -465,6 +466,8 @@ function CandidateProfileEditor({
           </Button>
         </div>
       </Section>
+
+      <ResumeSection />
 
       <Section
         title="Discovery and consent"

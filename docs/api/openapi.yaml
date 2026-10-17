@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
   title: CoFoundry AI API
-  version: 0.3.0
+  version: 0.4.0
   description: |
     Derived from Implementation Contract v3.0, Sections 17-21. This file grows phase by phase:
-    only routes that are implemented and tested are listed (Phase 3: health, identity, profiles).
+    only routes that are implemented and tested are listed (Phase 4: health, identity, profiles, startup briefs, candidate resume).
 
     Conventions (Section 17): JSON only; success `{data, requestId}`; list
     `{data, nextCursor, requestId}`; error `{error: {code, message, fieldErrors?}, requestId}`.
@@ -237,14 +237,295 @@ paths:
               { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } },
           }
         '404': { $ref: '#/components/responses/NotFound' }
+  /startups:
+    get:
+      summary: List briefs (owner list or candidate discovery)
+      description: |
+        scope=mine (founder role): the session founder's briefs, all states, newest first.
+        scope=discover (candidate role): BriefPreview teasers of OPEN briefs from active founders in
+        the candidate's cohort (own briefs excluded). Opaque cursor ordered by createdAt then _id,
+        default limit 20, max 50. Unknown query parameters are 422.
+      parameters:
+        - {
+            name: scope,
+            in: query,
+            required: true,
+            schema: { type: string, enum: [mine, discover] },
+          }
+        - { name: cursor, in: query, required: false, schema: { type: string } }
+        - {
+            name: limit,
+            in: query,
+            required: false,
+            schema: { type: integer, minimum: 1, maximum: 50 },
+          }
+      responses:
+        '200':
+          {
+            description: Page,
+            content:
+              { application/json: { schema: { $ref: '#/components/schemas/ListEnvelope' } } },
+          }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    post:
+      summary: Create a draft brief (founder role)
+      description: All draft fields optional except title; server fields (status, version, roleKey, opportunityType, workMode, ipPolicyVersion, dates) are rejected.
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/BriefDraftFields'
+              required: [title]
+      responses:
+        '201':
+          {
+            description: Draft (version 0),
+            content:
+              { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } },
+          }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /startups/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      summary: Brief view decided by the server
+      description: |
+        Owner: {access: owner, brief: StartupBriefData, preview: BriefPreview}. Active candidate in
+        the founder's cohort and the brief is open: {access: preview, preview}. Everyone else,
+        drafts, closed briefs and malformed ids: 404. The preview never contains problem,
+        solution, team coverage or account fields.
+      responses:
+        '200':
+          {
+            description: View,
+            content:
+              { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } },
+          }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      summary: Edit a draft (owner; version increments on each edit)
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expectedVersion, changes]
+              properties:
+                expectedVersion: { type: integer, minimum: 0 }
+                changes: { $ref: '#/components/schemas/BriefDraftFields' }
+      responses:
+        '200': { description: Updated draft }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: VERSION_CONFLICT (stale version) or INVALID_STATE (not a draft) }
+        '422': { $ref: '#/components/responses/Error' }
+  /startups/{id}/publish:
+    post:
+      summary: Publish a draft as open version 1 (owner)
+      description: Full validation (Sections 03/13); missing fields are 422 VALIDATION_FAILED with brief.<field> errors; no required skill above team coverage is 422 NO_SKILL_GAP. Repeating on an open brief returns it; a closed brief is 409 INVALID_STATE.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                additionalProperties: false,
+                required: [expectedVersion],
+                properties: { expectedVersion: { type: integer, minimum: 0 } },
+              }
+      responses:
+        '200': { description: Open brief }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /startups/{id}/close:
+    post:
+      summary: Close an open brief (owner); drafts are 409 INVALID_STATE
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                type: object,
+                additionalProperties: false,
+                required: [reason],
+                properties: { reason: { type: string, maxLength: 500 } },
+              }
+      responses:
+        '200': { description: Closed brief }
+        '409': { $ref: '#/components/responses/Error' }
+  /startups/{id}/clone:
+    post:
+      summary: Copy an owned brief into a new draft (version 0, clonedFromId)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        '201': { description: New draft }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /candidate/resume:
+    get:
+      summary: Own resume metadata (candidate role)
+      responses:
+        '200':
+          {
+            description: CandidateResumeData,
+            content:
+              { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } },
+          }
+        '403': { $ref: '#/components/responses/Error' }
+    put:
+      summary: Upload or replace the resume (raw PDF body)
+      description: |
+        Phase 4 amendment to v3.0 (which deferred uploads): the ONLY route that accepts a non-JSON
+        body. Raw application/pdf, max 5 MiB (413), signature checked, text extracted in a bounded
+        worker. Malformed, password-protected or too-slow PDFs are 422 and never stored; PDFs without
+        text are stored with extraction status no_text. Requires consent header
+        X-Resume-Consent: resume-processing-v1, optimistic version header X-Expected-Version
+        (0 = none yet) and optional URI-encoded X-Filename (display only). Limited to 10 per hour.
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+        - {
+            name: X-Resume-Consent,
+            in: header,
+            required: true,
+            schema: { type: string, const: resume-processing-v1 },
+          }
+        - {
+            name: X-Expected-Version,
+            in: header,
+            required: true,
+            schema: { type: integer, minimum: 0 },
+          }
+        - { name: X-Filename, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/pdf:
+            schema: { type: string, format: binary }
+      responses:
+        '200': { description: CandidateResumeData }
+        '409': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    delete:
+      summary: Delete the resume, its extracted text and the processing consent
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      responses:
+        '204': { description: Deleted (idempotent) }
+  /candidate/resume/file:
+    get:
+      summary: Download the original (owner only, attachment, sandboxed)
+      responses:
+        '200':
+          {
+            description: PDF,
+            content: { application/pdf: { schema: { type: string, format: binary } } },
+          }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /candidate/resume/text:
+    get:
+      summary: The redacted extracted text future question generation would receive (owner only)
+      responses:
+        '200': { description: ResumeTextData }
+        '404': { $ref: '#/components/responses/NotFound' }
 components:
   parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: UUID per user action; stored 24 h per actor and route.
+      schema: { type: string, format: uuid }
     CsrfHeader:
       name: X-CSRF-Token
       in: header
       required: true
       schema: { type: string }
   schemas:
+    ListEnvelope:
+      type: object
+      required: [data, nextCursor, requestId]
+      properties:
+        data: { type: array, items: { type: object } }
+        nextCursor: { type: [string, 'null'] }
+        requestId: { type: string }
+    BriefDraftFields:
+      type: object
+      additionalProperties: false
+      description: Writable draft fields (Section 14). Draft text may be short; publish enforces minimums.
+      properties:
+        title: { type: string, minLength: 1, maxLength: 100 }
+        teaser: { type: string, maxLength: 500 }
+        problem: { type: string, maxLength: 3000, description: Confidential }
+        solution: { type: string, maxLength: 3000, description: Confidential }
+        industryTags: { type: array, maxItems: 5, items: { type: string } }
+        missionTags: { type: array, maxItems: 5, items: { type: string } }
+        teamSkills:
+          type: array
+          items:
+            {
+              type: object,
+              additionalProperties: false,
+              required: [skillId, level],
+              properties:
+                { skillId: { type: string }, level: { type: integer, minimum: 0, maximum: 5 } },
+            }
+        requiredSkills:
+          type: array
+          maxItems: 8
+          items:
+            type: object
+            additionalProperties: false
+            required: [skillId, level, importance, mandatory]
+            properties:
+              skillId: { type: string }
+              level: { type: integer, minimum: 1, maximum: 5 }
+              importance: { type: integer, minimum: 1, maximum: 5 }
+              mandatory: { type: boolean }
+        hoursRequiredPerWeek: { type: [integer, 'null'], minimum: 1, maximum: 40 }
+        commitmentMonths: { type: [integer, 'null'], minimum: 1, maximum: 12 }
+        mandatoryAvailability: { type: boolean }
+        mandatoryCommitment: { type: boolean }
+        compensation:
+          type: object
+          additionalProperties: false
+          required: [type, amountMinor, paymentDueDays, methodNote, benefitDescription]
+          properties:
+            type: { type: string, enum: [paid, credit_reference, unpaid] }
+            amountMinor: { type: [integer, 'null'], minimum: 1, description: INR paise }
+            paymentDueDays: { type: [integer, 'null'], minimum: 1, maximum: 30 }
+            methodNote: { type: string, maxLength: 300 }
+            benefitDescription: { type: string, maxLength: 500 }
     DataEnvelope:
       type: object
       required: [data, requestId]

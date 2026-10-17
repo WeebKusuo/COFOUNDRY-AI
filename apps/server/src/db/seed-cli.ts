@@ -4,6 +4,7 @@ import { createLogger } from '../lib/logger.js';
 import { DEMO_ACCOUNTS, DEV_DEFAULT_DEMO_PASSWORD } from './demo-accounts.js';
 import { closeMongo, connectMongo } from './mongo.js';
 import { SeedRefusedError, seedDemoAccounts } from './seed.js';
+import { createLocalFileStorage } from '../resumes/storage.js';
 
 /**
  * `npm run db:seed` — creates or updates the shared demo accounts.
@@ -36,6 +37,7 @@ async function main(): Promise<void> {
       demoMode: config.demoMode,
       password,
       reset,
+      deleteResumeFile: (key) => createLocalFileStorage(config.resumeStorageDir).delete(key),
     });
     logger.info(
       {
@@ -44,6 +46,7 @@ async function main(): Promise<void> {
         unchanged: summary.unchanged.length,
         removed: summary.removed,
         profilesCreated: summary.profilesCreated,
+        briefsCreated: summary.briefsCreated,
       },
       'demo accounts seeded',
     );

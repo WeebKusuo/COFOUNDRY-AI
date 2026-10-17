@@ -84,6 +84,51 @@ export const MIGRATIONS: readonly Migration[] = [
       await consents.createIndex({ userId: 1, purpose: 1 }, { name: 'userId_purpose' });
     },
   },
+  {
+    version: 4,
+    name: 'startup-briefs-and-idempotency',
+    up: async (conn) => {
+      // Section 14: StartupBrief index founderUserId+status; list order indexes for the owner list
+      // and candidate discovery (createdAt then _id). Section 16: IdempotencyRecord unique
+      // (actorUserId, route, key), purged after 24 h by the sweeper (no TTL index, as for sessions).
+      for (const name of ['startup_briefs', 'idempotency_records']) {
+        await ensureCollection(conn, name);
+      }
+      const db = conn.db;
+      if (!db) throw new Error('database not connected');
+      const briefs = db.collection('startup_briefs');
+      await briefs.createIndex({ founderUserId: 1, status: 1 }, { name: 'founderUserId_status' });
+      await briefs.createIndex(
+        { founderUserId: 1, createdAt: -1, _id: -1 },
+        { name: 'founderUserId_createdAt' },
+      );
+      await briefs.createIndex({ status: 1, createdAt: -1, _id: -1 }, { name: 'status_createdAt' });
+      await briefs.createIndex(
+        { seedKey: 1 },
+        { unique: true, sparse: true, name: 'seedKey_unique' },
+      );
+      const idem = db.collection('idempotency_records');
+      await idem.createIndex(
+        { actorUserId: 1, route: 1, key: 1 },
+        { unique: true, name: 'actor_route_key_unique' },
+      );
+      await idem.createIndex({ expiresAt: 1 }, { name: 'expiresAt' });
+    },
+  },
+  {
+    version: 5,
+    name: 'candidate-resumes',
+    up: async (conn) => {
+      // Phase 4 amendment: one resume document per candidate (metadata, extracted text and the
+      // private storage key). Additive only; existing collections are untouched.
+      await ensureCollection(conn, 'candidate_resumes');
+      const db = conn.db;
+      if (!db) throw new Error('database not connected');
+      await db
+        .collection('candidate_resumes')
+        .createIndex({ userId: 1 }, { unique: true, name: 'userId_unique' });
+    },
+  },
 ];
 
 export const LATEST_MIGRATION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);

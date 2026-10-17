@@ -18,6 +18,7 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     trustProxyHops: 0,
     serveWeb: false,
     webDistDir: '/nonexistent',
+    resumeStorageDir: '/nonexistent-resumes',
     ...overrides,
   };
 }

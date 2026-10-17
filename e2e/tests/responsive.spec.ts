@@ -42,3 +42,38 @@ test('the candidate profile editor works on a phone', async ({ page }) => {
   await page.reload();
   await expect(page.getByLabel('Skill 3', { exact: true })).toHaveValue('testing');
 });
+
+test('the brief editor and resume section fit a phone screen', async ({ page }) => {
+  const overflow = () =>
+    page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+  await page.goto('/sign-in');
+  await page.getByLabel('Email').fill(ACCOUNTS.founder);
+  await page.getByLabel('Password', { exact: false }).first().fill(E2E_PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Founder workspace' })).toBeVisible();
+  await page.goto('/founder/briefs');
+  await page.getByRole('button', { name: 'New brief' }).click();
+  await page.getByLabel(/Brief title/).fill('Phone draft');
+  await page.getByRole('button', { name: 'Create draft' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Phone draft' })).toBeVisible();
+  expect(await overflow()).toBe(0);
+  await page.getByLabel('Teaser').fill('Typed on a phone.');
+  await page.getByRole('button', { name: 'Save draft' }).click();
+  await expect(page.getByText('Draft saved', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Open navigation' }).click();
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page.getByText('You signed out')).toBeVisible();
+
+  await page.goto('/sign-in');
+  await page.getByLabel('Email').fill(ACCOUNTS.candidate);
+  await page.getByLabel('Password', { exact: false }).first().fill(E2E_PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Candidate workspace' })).toBeVisible();
+  await page.goto('/candidate/profile');
+  await expect(
+    page.getByRole('region', { name: 'Resume' }).getByText(/No resume uploaded/),
+  ).toBeVisible();
+  expect(await overflow()).toBe(0);
+});

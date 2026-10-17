@@ -4,6 +4,7 @@ import type { UserRole } from '@cofoundry/shared';
 import { Badge, ButtonLink, Card, EmptyState } from '../../components/ui';
 import { useAuth } from '../../lib/auth';
 import { WORKSPACES, workspaceHref, type NavItem } from './nav';
+import { useMyBriefs } from '../briefs/api';
 
 function PageHeader({ title, description }: { title: string; description: string }) {
   return (
@@ -22,6 +23,7 @@ export function WorkspaceHome({ role }: { role: UserRole }) {
     <>
       <PageHeader title={def.title} description={def.summary} />
       {role !== 'moderator' ? <ProfileStatus role={role} /> : null}
+      {role === 'founder' ? <BriefStatus /> : null}
       <h2 className="mb-3 text-lg font-semibold text-ink">Areas in this workspace</h2>
       <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {areas.map((item) => {
@@ -71,6 +73,35 @@ function ProfileStatus({ role }: { role: 'founder' | 'candidate' }) {
       </div>
       <ButtonLink to={href} variant="secondary" size="sm">
         {summary ? 'Edit profile' : 'Create profile'}
+      </ButtonLink>
+    </Card>
+  );
+}
+
+function BriefStatus() {
+  const briefs = useMyBriefs();
+  const all = briefs.data?.pages.flatMap((p) => p.data) ?? [];
+  const n = (s: string) => all.filter((b) => b.status === s).length;
+  return (
+    <Card
+      as="section"
+      aria-label="Brief status"
+      className="mb-8 flex flex-wrap items-center justify-between gap-4 shadow-none"
+    >
+      <div>
+        <h2 className="font-semibold text-ink">Your briefs</h2>
+        <p className="mt-1 text-sm text-ink-muted" aria-live="polite">
+          {briefs.isPending
+            ? 'Loading…'
+            : briefs.isError
+              ? 'Could not load your briefs.'
+              : all.length === 0
+                ? 'No briefs yet. A published brief is required before matching.'
+                : `${n('open')} open · ${n('draft')} draft · ${n('closed')} closed${briefs.hasNextPage ? ' (newest 20)' : ''}`}
+        </p>
+      </div>
+      <ButtonLink to="/founder/briefs" variant="secondary" size="sm">
+        {all.length === 0 ? 'Create a brief' : 'Manage briefs'}
       </ButtonLink>
     </Card>
   );

@@ -8,10 +8,21 @@ import { sendData } from '../respond.js';
 import { PUBLIC_ROUTES, createAuthRouter } from './auth.js';
 import { createProfileRouter } from './profiles.js';
 import type { ProfileService } from '../../profiles/service.js';
+import type { BriefService } from '../../briefs/service.js';
+import type { IdempotencyStore } from '../../briefs/store.js';
+import { createBriefRouter } from './briefs.js';
+import type { ResumeService } from '../../resumes/service.js';
+import { createResumeRouter } from './resumes.js';
+import type { RequestHandler } from 'express';
 
 export interface V1Options {
   auth: AuthService;
   profiles: ProfileService;
+  briefs: BriefService;
+  idempotency: IdempotencyStore;
+  resumes: ResumeService;
+  /** Override the resume upload limiter (tests). */
+  resumeUploadLimiter?: RequestHandler;
   cookies: CookieSettings;
   limiters: AuthRateLimiters;
   /** Test-only routes, mounted behind the same CSRF and deny-by-default guards. */
@@ -40,6 +51,8 @@ export function createV1Router(options: V1Options): Router {
     ),
   );
   router.use(createProfileRouter(options.profiles));
+  router.use(createBriefRouter(options.briefs, options.idempotency));
+  router.use(createResumeRouter(options.resumes, options.resumeUploadLimiter));
   options.extraRoutes?.(router);
   return router;
 }

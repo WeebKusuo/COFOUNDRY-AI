@@ -11,13 +11,20 @@ import { SignInPage } from '../features/auth/SignInPage';
 import { RequireRole } from '../features/auth/RequireRole';
 import { CandidateProfilePage } from '../features/profile/CandidateProfilePage';
 import { FounderProfilePage } from '../features/profile/FounderProfilePage';
+import { BriefsListPage } from '../features/briefs/BriefsListPage';
+import { BriefEditorPage } from '../features/briefs/BriefEditorPage';
 import type { ReactElement } from 'react';
 import type { UserRole } from '@cofoundry/shared';
 
 /** Screens built so far; every other nav destination renders the "not available yet" state. */
 const SCREENS: Partial<Record<UserRole, Record<string, ReactElement>>> = {
   candidate: { profile: <CandidateProfilePage /> },
-  founder: { profile: <FounderProfilePage /> },
+  founder: { profile: <FounderProfilePage />, briefs: <BriefsListPage /> },
+};
+
+/** Detail routes below a nav destination (not nav items themselves). */
+const DETAIL_ROUTES: Partial<Record<UserRole, RouteObject[]>> = {
+  founder: [{ path: 'briefs/:briefId', element: <BriefEditorPage /> }],
 };
 
 /**
@@ -41,14 +48,17 @@ export const routes: RouteObject[] = [
         <AppShell role={role} />
       </RequireRole>
     ),
-    children: WORKSPACES[role].nav.map((item) =>
-      item.path === ''
-        ? { index: true, element: <WorkspaceHome role={role} /> }
-        : {
-            path: item.path,
-            element: SCREENS[role]?.[item.path] ?? <PlannedScreen role={role} item={item} />,
-          },
-    ),
+    children: [
+      ...WORKSPACES[role].nav.map((item): RouteObject =>
+        item.path === ''
+          ? { index: true, element: <WorkspaceHome role={role} /> }
+          : {
+              path: item.path,
+              element: SCREENS[role]?.[item.path] ?? <PlannedScreen role={role} item={item} />,
+            },
+      ),
+      ...(DETAIL_ROUTES[role] ?? []),
+    ],
   })),
   {
     element: <PublicLayout />,

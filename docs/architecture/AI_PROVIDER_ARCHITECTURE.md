@@ -1,7 +1,8 @@
 # AI provider architecture
 
-Status: Phase 1 — architecture only. No model is called anywhere yet. The updated AI interview
-contract will supersede the draft input/output shapes before the interview phases.
+Status: Phase 4 — contracts and integration points only. No model is called anywhere yet; every
+capability is registered as `disabled`. Question generation and adaptive follow-up now use the
+versioned contract `ai-interview-contract-v1` (`packages/shared/src/interview.ts`).
 
 ## Goals
 
@@ -37,7 +38,8 @@ The module depends only on `zod` and itself, so it can be tested and reviewed in
 
 | Capability             | Owner         | Notes                                                                                                                                                                                              |
 | ---------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `question_generation`  | Dev 2         | Fine-tuned model API: next question / follow-up from profile summary and history                                                                                                                   |
+| `question_generation`  | Dev 2         | User's fine-tuned API: resume-based technical questions from `ResumeQuestionGenerationInput` (redacted resume text, skills, required skills)                                                       |
+| `follow_up_generation` | Dev 2         | User's fine-tuned API: one adaptive follow-up from one question and its one answer (`FollowUpGenerationInput`)                                                                                     |
 | `technical_evaluation` | Dev 1         | Correctness, reasoning, completeness, practicality per answer; backend computes totals                                                                                                             |
 | `language_evaluation`  | Dev 1         | English/Hindi detection plus grammar, clarity, communication feedback — never mixed into technical scores                                                                                          |
 | `speech_analysis`      | Dev 1         | Transcription with timestamps; pace and pauses computed deterministically by the backend. Needs `interview_audio` consent                                                                          |
@@ -64,3 +66,37 @@ version, time) and its own dispute path:
 1. Technical rubric scores (anchors only) — numeric, computed by the backend.
 2. Language feedback — qualitative; does not change technical scores.
 3. Observable presentation signals — event timelines with explicit limitations; no inferred traits.
+
+## Phase 4: interview system contracts
+
+Planned flow: founder invitation → candidate acceptance (consents) → live interview room
+(candidate webcam + AI avatar) → spoken introduction → resume-based technical questions → spoken
+answers → speech-to-text → adaptive follow-up → separate analyses → final report. Phase 4 builds
+none of the room, avatar, speech, video or scoring; it fixes the data contracts below.
+
+| Contract                        | Where                                                                                   | Notes                                                                                                                                                |
+| ------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Resume metadata and status      | `shared/resume.ts` (`ResumeMetadata`, `ResumeExtraction`)                               | Version never reused; `succeeded` or `no_text`; extractor version and text SHA-256 recorded                                                          |
+| Resume reference on a session   | `shared/interview.ts` (`ResumeRef`, `InterviewResumeBinding`)                           | `resume_based` with `{resumeVersion, textSha256, extractorVersion}` or `profile_only` with the reason                                                |
+| Readiness check before starting | `resumeInterviewReadiness`, `resolveResumeBinding`                                      | No resume, no text or no consent → profile-only questions; never a blocked candidate                                                                 |
+| Question-generation input       | `buildResumeQuestionInput` (`src/interviews/`)                                          | Redacted resume text (emails, phones, links removed), self-reported skills/projects, required skills. No ids, names, links or brief problem/solution |
+| Output validation               | `src/ai/contracts.ts`                                                                   | Strict zod schemas; `checkQuestionEvidence` rejects questions whose quote is not an exact substring of the resume text                               |
+| Analysis categories             | `TechnicalCorrectness`, `LanguageFeedback`, `AudioCharacteristics`, `VideoObservations` | Only technical correctness can score (`technicalScoringInputs`); the others carry `affectsTechnicalScore: false`                                     |
+| Media and analysis consent      | `InterviewMediaConsent` (`interview-media-v1`)                                          | Required: webcam, microphone, technical analysis. Optional: recording, language, audio, video analysis — declining skips them, never penalises       |
+
+Only `ResumeService.readForInterviewProcessing` releases resume content outside the candidate's
+own routes, and only after re-checking consent and extraction status. No HTTP route exposes it.
+
+**Audio and video observations are not evidence** of cheating, nervousness, confidence or
+dishonesty and never change technical scores (`OBSERVATION_LIMITATIONS_NOTICE`).
+
+## Model and tool policy
+
+Every AI model or AI-related tool adopted in later phases must be free, open-source, reasonably
+well-performing and preferably self-hostable. Before registering a provider, record its exact
+model identifier, licence and whether the licence permits commercial use. The user's fine-tuned
+question-generation and follow-up APIs will be supplied later and plug in as adapters for
+`question_generation` and `follow_up_generation`.
+
+The only new third-party component in Phase 4 is **pdf.js** (`pdfjs-dist` 6.3.289, Apache-2.0,
+commercial use permitted), used for resume text extraction. It is not an AI model.

@@ -4,12 +4,16 @@ import { API_PREFIX, LIMITS } from '@cofoundry/shared';
 import type { AppConfig } from '../config/env.js';
 import type { Logger } from '../lib/logger.js';
 import { noStore, requestContext } from './middleware/request-context.js';
-import { requireJsonBody, requireSameOrigin, securityHeaders } from './middleware/security.js';
+import { createJsonBodyGuard, requireSameOrigin, securityHeaders } from './middleware/security.js';
 import { defaultAuthRateLimiters, type AuthRateLimiters } from './middleware/rate-limit.js';
 import { loadSession } from './middleware/auth.js';
 import { cookieSettings } from '../auth/cookies.js';
 import type { AuthService } from '../auth/service.js';
 import type { ProfileService } from '../profiles/service.js';
+import type { BriefService } from '../briefs/service.js';
+import type { IdempotencyStore } from '../briefs/store.js';
+import type { ResumeService } from '../resumes/service.js';
+import { RESUME_UPLOAD_PATH } from './routes/resumes.js';
 import { apiNotFound, errorHandler } from './middleware/error-handler.js';
 import { createV1Router } from './routes/v1.js';
 import { createStaticWebRouter } from './static-web.js';
@@ -19,6 +23,11 @@ export interface AppDependencies {
   logger: Logger;
   auth: AuthService;
   profiles: ProfileService;
+  briefs: BriefService;
+  idempotency: IdempotencyStore;
+  resumes: ResumeService;
+  /** Override the resume upload limiter (tests use tiny limits). */
+  resumeUploadLimiter?: express.RequestHandler;
   /** Override individual rate limiters (tests use tiny windows). */
   rateLimiters?: Partial<AuthRateLimiters>;
   /** Test-only routes mounted under /api/v1 behind the CSRF and sign-in guards. */
@@ -70,7 +79,11 @@ export function createApp(deps: AppDependencies): Express {
   api.use(requireSameOrigin(config.appOrigin));
   api.use(loadSession(deps.auth, cookies));
   api.use(limiters.general);
-  api.use(requireJsonBody);
+  api.use(
+    createJsonBodyGuard([
+      { method: 'PUT', path: `${API_PREFIX}${RESUME_UPLOAD_PATH}`, contentType: 'application/pdf' },
+    ]),
+  );
   api.use(express.json({ limit: LIMITS.jsonBodyBytes, strict: true, type: 'application/json' }));
 
   api.use(
@@ -78,6 +91,10 @@ export function createApp(deps: AppDependencies): Express {
     createV1Router({
       auth: deps.auth,
       profiles: deps.profiles,
+      briefs: deps.briefs,
+      idempotency: deps.idempotency,
+      resumes: deps.resumes,
+      ...(deps.resumeUploadLimiter ? { resumeUploadLimiter: deps.resumeUploadLimiter } : {}),
       cookies,
       limiters,
       ...(deps.extraV1Routes ? { extraRoutes: deps.extraV1Routes } : {}),

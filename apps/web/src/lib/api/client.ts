@@ -51,6 +51,8 @@ export interface RequestOptions {
   query?: Record<string, string | number | boolean | undefined>;
   headers?: Record<string, string>;
   signal?: AbortSignal;
+  /** A non-JSON body (only the resume upload uses this); sent as-is with its content type. */
+  raw?: { body: Blob; contentType: string };
 }
 
 /**
@@ -132,10 +134,15 @@ async function request(path: string, options: RequestOptions = {}): Promise<unkn
 async function rawRequest(path: string, options: RequestOptions, csrf?: string): Promise<unknown> {
   const method = options.method ?? 'GET';
   const headers: Record<string, string> = { Accept: 'application/json', ...options.headers };
-  let body: string | undefined;
+  let body: string | Blob | undefined;
   if (method !== 'GET') {
-    headers['Content-Type'] = 'application/json';
-    body = JSON.stringify(options.body ?? {});
+    if (options.raw) {
+      headers['Content-Type'] = options.raw.contentType;
+      body = options.raw.body;
+    } else {
+      headers['Content-Type'] = 'application/json';
+      body = JSON.stringify(options.body ?? {});
+    }
     if (csrf) headers['X-CSRF-Token'] = csrf;
   }
 
@@ -229,4 +236,24 @@ export const api = {
     assertEnvelope(payload);
     return (payload as ApiSuccess<T>).data;
   },
+  /** PUT of a raw file body (resume PDF). CSRF and the stale-token retry apply as usual. */
+  async upload<T>(
+    path: string,
+    file: Blob,
+    contentType: string,
+    headers: Record<string, string> = {},
+  ): Promise<T> {
+    const payload = await request(path, {
+      method: 'PUT',
+      headers,
+      raw: { body: file, contentType },
+    });
+    assertEnvelope(payload);
+    return (payload as ApiSuccess<T>).data;
+  },
 };
+
+/** A fresh Idempotency-Key for one user action (Section 17); reused by the CSRF retry. */
+export function newIdempotencyKey(): string {
+  return crypto.randomUUID();
+}

@@ -11,6 +11,14 @@ import { MemoryIdentityStore } from './memory-store.js';
 import { MemoryProfileStore } from './memory-profile-store.js';
 import { ProfileService } from '../../src/profiles/service.js';
 import type { ProfileStore } from '../../src/profiles/store.js';
+import { BriefService } from '../../src/briefs/service.js';
+import type { BriefStore, IdempotencyStore } from '../../src/briefs/store.js';
+import { MemoryBriefStore, MemoryIdempotencyStore } from './memory-brief-store.js';
+import { ResumeService } from '../../src/resumes/service.js';
+import { createPdfTextExtractor, type PdfTextExtractor } from '../../src/resumes/extract.js';
+import { createMemoryFileStorage, type ResumeFileStorage } from '../../src/resumes/storage.js';
+import type { ResumeStore } from '../../src/resumes/store.js';
+import { MemoryResumeStore } from './memory-resume-store.js';
 
 export const TEST_PASSWORD = 'correct-horse-battery';
 
@@ -47,15 +55,26 @@ export interface Harness {
   auth: AuthService;
   profileStore: ProfileStore;
   profiles: ProfileService;
+  briefStore: BriefStore;
+  briefs: BriefService;
+  idempotencyStore: IdempotencyStore;
+  resumeStore: ResumeStore;
+  resumeFiles: ResumeFileStorage;
+  resumes: ResumeService;
 }
 
 export function buildHarness(
   options: {
     store?: IdentityStore;
     profileStore?: ProfileStore;
+    briefStore?: BriefStore;
+    idempotencyStore?: IdempotencyStore;
+    resumeStore?: ResumeStore;
+    resumeFiles?: ResumeFileStorage;
+    extractor?: PdfTextExtractor;
     config?: Partial<AppConfig>;
     authOptions?: Partial<AuthServiceOptions>;
-  } & Pick<AppDependencies, 'extraV1Routes' | 'rateLimiters'> = {},
+  } & Pick<AppDependencies, 'extraV1Routes' | 'rateLimiters' | 'resumeUploadLimiter'> = {},
 ): Harness {
   const store = options.store ?? new MemoryIdentityStore();
   const config = testConfig(options.config);
@@ -65,15 +84,43 @@ export function buildHarness(
   });
   const profileStore = options.profileStore ?? new MemoryProfileStore();
   const profiles = new ProfileService(profileStore, store);
+  const briefStore = options.briefStore ?? new MemoryBriefStore();
+  const briefs = new BriefService(briefStore, store, profileStore);
+  const idempotencyStore = options.idempotencyStore ?? new MemoryIdempotencyStore();
+  const resumeStore = options.resumeStore ?? new MemoryResumeStore();
+  const resumeFiles = options.resumeFiles ?? createMemoryFileStorage();
+  const resumes = new ResumeService(
+    resumeStore,
+    resumeFiles,
+    profileStore,
+    options.extractor ?? createPdfTextExtractor(),
+    silentLogger,
+  );
   const app = createApp({
     config,
     logger: silentLogger,
     auth,
     profiles,
+    briefs,
+    idempotency: idempotencyStore,
+    resumes,
+    ...(options.resumeUploadLimiter ? { resumeUploadLimiter: options.resumeUploadLimiter } : {}),
     ...(options.extraV1Routes ? { extraV1Routes: options.extraV1Routes } : {}),
     ...(options.rateLimiters ? { rateLimiters: options.rateLimiters } : {}),
   });
-  return { app, store, auth, profileStore, profiles };
+  return {
+    app,
+    store,
+    auth,
+    profileStore,
+    profiles,
+    briefStore,
+    briefs,
+    idempotencyStore,
+    resumeStore,
+    resumeFiles,
+    resumes,
+  };
 }
 
 /** Reads the session cookie value from a Set-Cookie header list. */
@@ -103,20 +150,45 @@ export class TestClient {
     return this.agent.get(`/api/v1${path}`);
   }
 
-  async post(path: string, body: object = {}) {
-    return this.send('post', path, body);
+  async post(path: string, body: object = {}, headers: Record<string, string> = {}) {
+    return this.send('post', path, body, headers);
   }
 
-  async put(path: string, body: object = {}) {
-    return this.send('put', path, body);
+  async put(path: string, body: object = {}, headers: Record<string, string> = {}) {
+    return this.send('put', path, body, headers);
   }
 
-  private async send(method: 'post' | 'put', path: string, body: object) {
+  async patch(path: string, body: object = {}, headers: Record<string, string> = {}) {
+    return this.send('patch', path, body, headers);
+  }
+
+  async delete(path: string, headers: Record<string, string> = {}) {
+    return this.send('delete', path, {}, headers);
+  }
+
+  /** Raw body upload (e.g. application/pdf) with CSRF and Origin like a browser fetch. */
+  async upload(path: string, bytes: Buffer, headers: Record<string, string>) {
     if (!this.csrf) await this.refreshCsrf();
-    return this.agent[method](`/api/v1${path}`)
+    let req = this.agent
+      .put(`/api/v1${path}`)
       .set('Origin', TEST_ORIGIN)
-      .set('X-CSRF-Token', this.csrf ?? '')
-      .send(body);
+      .set('X-CSRF-Token', this.csrf ?? '');
+    for (const [k, v] of Object.entries(headers)) req = req.set(k, v);
+    return req.send(bytes);
+  }
+
+  private async send(
+    method: 'post' | 'put' | 'patch' | 'delete',
+    path: string,
+    body: object,
+    headers: Record<string, string>,
+  ) {
+    if (!this.csrf) await this.refreshCsrf();
+    let req = this.agent[method](`/api/v1${path}`)
+      .set('Origin', TEST_ORIGIN)
+      .set('X-CSRF-Token', this.csrf ?? '');
+    for (const [k, v] of Object.entries(headers)) req = req.set(k, v);
+    return req.send(body);
   }
 
   async login(email: string, password = TEST_PASSWORD) {

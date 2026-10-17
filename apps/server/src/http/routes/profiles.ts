@@ -4,85 +4,15 @@ import {
   INDUSTRY_TAGS,
   MISSION_TAGS,
   PROFILE_LIMITS as L,
-  SKILL_IDS,
-  checkHttpsUrl,
   discoveryGaps,
   discoveryRequirementMessage,
-  normalizeText,
-  resolveSkillId,
-  type SkillId,
 } from '@cofoundry/shared';
 import type { ProfileService } from '../../profiles/service.js';
 import { AppError } from '../errors.js';
 import { currentUser, requireRole } from '../middleware/auth.js';
 import { sendData } from '../respond.js';
 import { objectIdString, withValidation } from '../validation.js';
-
-/** Plain text: NFKC-normalised and trimmed before length checks (Section 03). */
-const text = (min: number, max: number, label: string) =>
-  z
-    .string()
-    .max(max * 4)
-    .transform(normalizeText)
-    .pipe(
-      z
-        .string()
-        .min(
-          min,
-          min === 1 ? `${label} is required.` : `${label} needs at least ${min} characters.`,
-        )
-        .max(max, `${label} can be at most ${max} characters.`),
-    );
-
-const skillId = z
-  .string()
-  .max(40)
-  .transform((value, ctx): SkillId => {
-    const id = resolveSkillId(value);
-    if (!id) {
-      ctx.addIssue({
-        code: 'custom',
-        message: `Unknown skill. Choose one of: ${SKILL_IDS.join(', ')}.`,
-      });
-      return z.NEVER;
-    }
-    return id;
-  });
-
-const distinct =
-  <T>(label: string) =>
-  (items: T[], ctx: z.RefinementCtx) => {
-    if (new Set(items).size !== items.length) {
-      ctx.addIssue({ code: 'custom', message: `Remove duplicate ${label}.` });
-    }
-  };
-
-const URL_MESSAGES: Record<string, string> = {
-  too_long: 'Links can be at most 2,048 characters.',
-  invalid: 'Enter a full link starting with https://.',
-  not_https: 'Links must start with https://.',
-  credentials: 'Links cannot contain a username or password.',
-  fragment: 'Remove the # part of the link.',
-  port: 'Links cannot use a custom port.',
-  local_host: 'Use a public website address.',
-  ip_literal: 'Use a website name, not an IP address.',
-};
-
-/** Section 23 URL rules; empty input means "no link". */
-const httpsUrlOrNull = z
-  .string()
-  .max(2048 * 2)
-  .nullable()
-  .transform((value, ctx) => {
-    const trimmed = value?.trim() ?? '';
-    if (trimmed === '') return null;
-    const check = checkHttpsUrl(trimmed);
-    if (!check.ok) {
-      ctx.addIssue({ code: 'custom', message: URL_MESSAGES[check.reason] ?? 'Invalid link.' });
-      return z.NEVER;
-    }
-    return check.url;
-  });
+import { distinct, httpsUrlOrNull, skillId, text } from '../schemas.js';
 
 const projectSchema = z.strictObject({
   id: objectIdString.optional(),

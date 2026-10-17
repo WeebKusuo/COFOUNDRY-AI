@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { IdentityStore, SessionRecord, UserRecord } from '../../src/auth/store.js';
+import type { UserRole } from '@cofoundry/shared';
 
 /**
  * In-memory IdentityStore for fast middleware tests. Behaviour that depends on MongoDB itself
@@ -20,6 +21,11 @@ export class MemoryIdentityStore implements IdentityStore {
   }
   async findUserById(id: string) {
     return this.users.get(id) ?? null;
+  }
+  async listActiveUserIdsInCohort(cohortId: string, role: UserRole) {
+    return [...this.users.values()]
+      .filter((u) => u.cohortId === cohortId && u.status === 'active' && u.roles.includes(role))
+      .map((u) => u.id);
   }
   async createSession(session: Omit<SessionRecord, 'id'>) {
     if ([...this.sessions.values()].some((s) => s.tokenHash === session.tokenHash)) {

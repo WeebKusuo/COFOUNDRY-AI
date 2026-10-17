@@ -12,6 +12,7 @@ const production = {
   APP_ORIGIN: 'https://cofoundry.example.com',
   MONGODB_URI: 'mongodb+srv://user:secret@cluster.example.net/cofoundry',
   LLM_PROVIDER: 'disabled',
+  RESUME_STORAGE_DIR: '/srv/cofoundry/resumes',
 };
 
 function problemsOf(env: Record<string, string>): string[] {
@@ -45,6 +46,22 @@ describe('loadConfig', () => {
     const problems = problemsOf({ NODE_ENV: 'production' });
     expect(problems.join('\n')).toMatch(/APP_ORIGIN/);
     expect(problems.join('\n')).toMatch(/MONGODB_URI/);
+  });
+
+  it('requires a private resume directory in production and keeps it outside the web build', () => {
+    const { RESUME_STORAGE_DIR: _omit, ...withoutDir } = production;
+    expect(problemsOf(withoutDir)).toContain(
+      'RESUME_STORAGE_DIR is required in production (a private, persistent directory)',
+    );
+    expect(
+      problemsOf({ ...production, WEB_DIST_DIR: '/srv/web', RESUME_STORAGE_DIR: '/srv/web/files' }),
+    ).toContain('RESUME_STORAGE_DIR must be outside the served web directory');
+    expect(loadConfig(production).resumeStorageDir).toBe('/srv/cofoundry/resumes');
+  });
+
+  it('defaults the resume directory to a git-ignored folder outside the web build in development', () => {
+    const config = loadConfig(base);
+    expect(config.resumeStorageDir).toMatch(/apps[\\/]server[\\/]var[\\/]resumes$/);
   });
 
   it('refuses a non-HTTPS origin in production', () => {
