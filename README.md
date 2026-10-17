@@ -13,7 +13,8 @@ and agree a bounded trial sprint. The engineering source of truth is
 | 01    | Foundation: monorepo, design system, landing, role layouts, API foundations, MongoDB, AI-provider architecture | Done — [PHASE_01_README](docs/phases/PHASE_01_README.md) |
 | 02    | Authentication and security: seeded accounts, sessions, CSRF, RBAC, sign-in UI, E2E tests                      | Done — [PHASE_02_README](docs/phases/PHASE_02_README.md) |
 | 03    | Candidate and founder profiles: skills, projects, availability, discovery consent, privacy-safe projection     | Done — [PHASE_03_README](docs/phases/PHASE_03_README.md) |
-| 04–18 | Briefs, matching, interviews, requests, sprints, safety, privacy, deployment                                   | Not started                                              |
+| 04    | Startup briefs (draft/publish/close/clone), private resume PDFs, AI interview contracts                        | Done — [PHASE_04_README](docs/phases/PHASE_04_README.md) |
+| 05–18 | Matching, interviews, requests, sprints, safety, privacy, deployment                                           | Not started                                              |
 
 What exists today versus what is deferred:
 
@@ -26,22 +27,29 @@ What exists today versus what is deferred:
   (public projection); skills with levels, up to 5 projects with skill tags and optional HTTPS
   link, interests, availability, contributor preference; versioned discovery consent; profile
   editor with live preview; seeded Section 26 demo profiles.
-- **Not yet implemented:** briefs, matching and every later product feature route; worker jobs;
-  blocks (they will further restrict profile visibility).
-  Workspace screens beyond the overview say "Not available yet".
-- **Never provided (contract v3.0):** public sign-up, email verification, password reset,
-  resume upload or parsing.
+  Briefs: `GET/POST /startups`, `GET/PATCH /startups/:id`, `POST /startups/:id/{publish,close,clone}`
+  with Idempotency-Key; draft → open (immutable version 1) → closed; confidential problem/solution
+  visible only to the owner, teaser projection for cohort candidates; founder brief dashboard and
+  editor; seeded PayPilot brief.
+  Resume (Phase 4 amendment): `GET/PUT/DELETE /candidate/resume`, `GET /candidate/resume/file`,
+  `GET /candidate/resume/text`; private PDF storage, bounded text extraction, consent, redaction;
+  resume section on the candidate profile. AI interview data contracts and integration points
+  (no model calls).
+- **Not yet implemented:** full-brief access grants (`POST/DELETE /startups/:id/access`),
+  matching, interviews and every later feature route; worker jobs; blocks. Remaining workspace
+  screens say "Not available yet".
+- **Never provided (contract v3.0):** public sign-up, email verification, password reset.
 - **Off-platform by contract:** live walkthroughs and payments.
 
 ## Stack
 
 TypeScript monorepo (npm workspaces): React 19, Vite 8, Tailwind CSS 4, React Router 7, TanStack
-Query 5; Express 5, Mongoose 9, Zod 4, Pino, @node-rs/argon2; Vitest, Testing Library, Supertest,
-Playwright.
+Query 5; Express 5, Mongoose 9, Zod 4, Pino, @node-rs/argon2, pdf.js 6.3.289 (Apache-2.0, resume
+text extraction); Vitest, Testing Library, Supertest, Playwright.
 
 ```
 apps/web         React SPA (design system, landing, sign-in, workspaces)
-apps/server      Express API, auth, MongoDB, migrations, seeding, AI-provider architecture
+apps/server      Express API, auth, profiles, briefs, resumes, MongoDB, migrations, seeding, AI
 packages/shared  Contract constants, API and auth types, pure helpers (used by both)
 e2e/             Playwright browser tests against the real server and built SPA
 docs/            Phase reports, OpenAPI spec, architecture notes
@@ -50,9 +58,11 @@ scripts/         Packaging script (ZIP per phase)
 
 ## Requirements
 
-- Node.js **22.12 or newer** (`node -v`) and npm 10+
+- Node.js **22.13 or newer** (`node -v`; required by pdf.js) and npm 10+
 - MongoDB **as a replica set** (production refuses to start without transactions). Tests and E2E
   need nothing: they start an in-memory replica set automatically.
+- A private, persistent directory for resume PDFs in production (`RESUME_STORAGE_DIR`, outside
+  the web build). Development defaults to `apps/server/var/resumes` (git-ignored).
 
 ## Setup
 
@@ -67,14 +77,14 @@ Start a local single-node replica set once (any MongoDB 6+), then migrate and se
 mongod --replSet rs0 --dbpath ./data --port 27017
 mongosh --eval "rs.initiate()"       # first time only
 npm run db:migrate
-npm run db:seed                      # creates demo accounts and profiles (idempotent)
+npm run db:seed                      # demo accounts, profiles and the PayPilot brief (idempotent)
 ```
 
 Docker alternative: `docker run -d -p 27017:27017 --name cofoundry-mongo mongo:8 --replSet rs0`
 then `docker exec cofoundry-mongo mongosh --eval "rs.initiate()"`.
 
-`npm run db:seed -- --reset` deletes and recreates demo accounts, their profiles and consent
-records (asks for confirmation). Seeding
+`npm run db:seed -- --reset` deletes and recreates demo accounts, their profiles, consent records,
+briefs and resumes (including stored resume files); it asks for confirmation. Seeding
 runs only with `DEMO_MODE=true` and refuses any database containing pilot accounts.
 
 ### Demo accounts
@@ -118,10 +128,11 @@ not a replica set also set `MONGODB_TEST_EXPECT_TRANSACTIONS=false`.
 ## Packaging
 
 ```bash
-npm run package:zip -- 03    # writes release/cofoundry-ai-phase-03.zip
+npm run package:zip -- 04    # writes release/cofoundry-ai-phase-04.zip
 ```
 
-The ZIP excludes `node_modules`, `.git`, `.env*` (except `.env.example`), build output and caches.
+The ZIP excludes `node_modules`, `.git`, `.env*` (except `.env.example`), build output, caches and
+private runtime data (`var/`, e.g. uploaded resumes).
 
 ## Team and Git rules
 
