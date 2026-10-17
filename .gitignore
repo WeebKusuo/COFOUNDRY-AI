@@ -11,3 +11,5 @@ release/
 Thumbs.db
 .idea/
 *.tsbuildinfo
+test-results/
+playwright-report/

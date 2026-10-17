@@ -2,7 +2,7 @@
   "name": "cofoundry-ai",
   "version": "0.1.0",
   "private": true,
-  "description": "CoFoundry AI — early-team formation for startups (Implementation Contract v3.0)",
+  "description": "CoFoundry AI \u2014 early-team formation for startups (Implementation Contract v3.0)",
   "type": "module",
   "engines": {
     "node": ">=22.12.0",
@@ -18,15 +18,19 @@
     "start": "node apps/server/dist/index.js",
     "db:migrate": "npm run db:migrate -w @cofoundry/server",
     "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p e2e/tsconfig.json",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build",
-    "package:zip": "node scripts/package-zip.mjs"
+    "package:zip": "node scripts/package-zip.mjs",
+    "db:seed": "npm run db:seed -w @cofoundry/server --",
+    "test:e2e": "npm run build && playwright test -c e2e/playwright.config.ts",
+    "e2e:install": "playwright install chromium"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.64.1",
     "@types/node": "^22.20.5",
     "concurrently": "^10.0.6",
     "eslint": "^9.39.5",

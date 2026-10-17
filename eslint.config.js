@@ -8,7 +8,15 @@ import globals from 'globals';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/coverage/**', '**/node_modules/**', 'release/**', '**/*.d.ts'],
+    ignores: [
+      '**/dist/**',
+      '**/coverage/**',
+      '**/node_modules/**',
+      'release/**',
+      '**/*.d.ts',
+      '**/test-results/**',
+      '**/playwright-report/**',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -24,7 +32,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['apps/server/**/*.ts', 'packages/**/*.ts', 'scripts/**/*.mjs', '*.js'],
+    files: ['apps/server/**/*.ts', 'packages/**/*.ts', 'e2e/**/*.ts', 'scripts/**/*.mjs', '*.js'],
     languageOptions: { globals: { ...globals.node } },
   },
   {
