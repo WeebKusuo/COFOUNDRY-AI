@@ -13,3 +13,5 @@ Thumbs.db
 *.tsbuildinfo
 test-results/
 playwright-report/
+# Private runtime data (uploaded resumes in development)
+apps/server/var/

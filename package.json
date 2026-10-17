@@ -5,7 +5,7 @@
   "description": "CoFoundry AI \u2014 early-team formation for startups (Implementation Contract v3.0)",
   "type": "module",
   "engines": {
-    "node": ">=22.12.0",
+    "node": ">=22.13.0",
     "npm": ">=10"
   },
   "workspaces": [
