@@ -12,7 +12,8 @@ and agree a bounded trial sprint. The engineering source of truth is
 | ----- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | 01    | Foundation: monorepo, design system, landing, role layouts, API foundations, MongoDB, AI-provider architecture | Done — [PHASE_01_README](docs/phases/PHASE_01_README.md) |
 | 02    | Authentication and security: seeded accounts, sessions, CSRF, RBAC, sign-in UI, E2E tests                      | Done — [PHASE_02_README](docs/phases/PHASE_02_README.md) |
-| 03–18 | Profiles, briefs, matching, interviews, requests, sprints, safety, privacy, deployment                         | Not started                                              |
+| 03    | Candidate and founder profiles: skills, projects, availability, discovery consent, privacy-safe projection     | Done — [PHASE_03_README](docs/phases/PHASE_03_README.md) |
+| 04–18 | Briefs, matching, interviews, requests, sprints, safety, privacy, deployment                                   | Not started                                              |
 
 What exists today versus what is deferred:
 
@@ -21,9 +22,15 @@ What exists today versus what is deferred:
   Origin checks; login and general rate limits; deny-by-default route protection and server-side
   role checks; users/sessions collections with migrations; idempotent demo seeding; sign-in page;
   protected founder / candidate / moderator workspaces; AI-provider registry (all `disabled`).
-- **Not yet implemented:** profiles, briefs and every other product feature route; worker jobs.
+  Profiles: `GET/PUT /candidate/profile`, `GET/PUT /founder/profile`, `GET /profiles/:userId`
+  (public projection); skills with levels, up to 5 projects with skill tags and optional HTTPS
+  link, interests, availability, contributor preference; versioned discovery consent; profile
+  editor with live preview; seeded Section 26 demo profiles.
+- **Not yet implemented:** briefs, matching and every later product feature route; worker jobs;
+  blocks (they will further restrict profile visibility).
   Workspace screens beyond the overview say "Not available yet".
-- **Never provided (contract v3.0):** public sign-up, email verification, password reset.
+- **Never provided (contract v3.0):** public sign-up, email verification, password reset,
+  resume upload or parsing.
 - **Off-platform by contract:** live walkthroughs and payments.
 
 ## Stack
@@ -60,13 +67,14 @@ Start a local single-node replica set once (any MongoDB 6+), then migrate and se
 mongod --replSet rs0 --dbpath ./data --port 27017
 mongosh --eval "rs.initiate()"       # first time only
 npm run db:migrate
-npm run db:seed                      # creates the demo accounts (idempotent)
+npm run db:seed                      # creates demo accounts and profiles (idempotent)
 ```
 
 Docker alternative: `docker run -d -p 27017:27017 --name cofoundry-mongo mongo:8 --replSet rs0`
 then `docker exec cofoundry-mongo mongosh --eval "rs.initiate()"`.
 
-`npm run db:seed -- --reset` deletes and recreates demo accounts (asks for confirmation). Seeding
+`npm run db:seed -- --reset` deletes and recreates demo accounts, their profiles and consent
+records (asks for confirmation). Seeding
 runs only with `DEMO_MODE=true` and refuses any database containing pilot accounts.
 
 ### Demo accounts
@@ -110,7 +118,7 @@ not a replica set also set `MONGODB_TEST_EXPECT_TRANSACTIONS=false`.
 ## Packaging
 
 ```bash
-npm run package:zip -- 02    # writes release/cofoundry-ai-phase-02.zip
+npm run package:zip -- 03    # writes release/cofoundry-ai-phase-03.zip
 ```
 
 The ZIP excludes `node_modules`, `.git`, `.env*` (except `.env.example`), build output and caches.

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   ERROR_CODES,
+  INDUSTRY_LABELS,
+  INDUSTRY_TAGS,
+  MISSION_LABELS,
+  MISSION_TAGS,
+  SKILL_LABELS,
+  discoveryGaps,
   ERROR_STATUS,
   SKILL_IDS,
   checkHttpsUrl,
@@ -96,5 +102,34 @@ describe('normalizeEmail', () => {
   it('trims, lowercases and applies NFKC so one account has one key', () => {
     expect(normalizeEmail('  Founder@Demo.CoFoundry.TEST ')).toBe('founder@demo.cofoundry.test');
     expect(normalizeEmail('ｆounder@x.test')).toBe('founder@x.test');
+  });
+});
+
+describe('profile contract', () => {
+  const complete = {
+    skills: [{ skillId: 'nodejs', level: 3 }],
+    industryTags: ['fintech'],
+    missionTags: ['reliability'],
+    availableHoursPerWeek: 8,
+    commitmentMonths: 3,
+    opportunityTypes: ['contributor'],
+    discoveryConsent: true,
+  };
+
+  it('is discovery-ready only with every non-project field and consent', () => {
+    expect(discoveryGaps(complete)).toEqual([]);
+    expect(discoveryGaps({ ...complete, skills: [], discoveryConsent: false })).toEqual([
+      'skills',
+      'discoveryConsent',
+    ]);
+    expect(
+      discoveryGaps({ ...complete, availableHoursPerWeek: null, opportunityTypes: [] }),
+    ).toEqual(['availableHoursPerWeek', 'opportunityTypes']);
+  });
+
+  it('labels every canonical tag', () => {
+    expect(Object.keys(SKILL_LABELS).sort()).toEqual([...SKILL_IDS].sort());
+    expect(Object.keys(INDUSTRY_LABELS).sort()).toEqual([...INDUSTRY_TAGS].sort());
+    expect(Object.keys(MISSION_LABELS).sort()).toEqual([...MISSION_TAGS].sort());
   });
 });
