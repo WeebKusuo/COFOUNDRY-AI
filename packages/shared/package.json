@@ -1,0 +1,17 @@
+{
+  "name": "@cofoundry/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Contract v3.0 constants, API envelope types and pure helpers shared by web and server",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.5"
+  }
+}

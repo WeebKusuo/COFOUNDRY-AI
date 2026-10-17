@@ -1,0 +1,166 @@
+@import 'tailwindcss';
+
+/*
+ * CoFoundry AI design tokens.
+ * Semantic CSS variables switch per theme (html[data-theme]); Tailwind utilities read them via
+ * @theme inline, so components never hard-code a colour. Every status colour is paired with a
+ * text label in components — colour is never the only signal (Section 02 accessibility).
+ */
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+:root {
+  color-scheme: light;
+  --c-canvas: #f6f7f9;
+  --c-surface: #ffffff;
+  --c-surface-sunk: #eef1f4;
+  --c-line: #d9dee5;
+  --c-line-strong: #b9c1cc;
+  --c-ink: #14213d;
+  --c-ink-muted: #4a5568;
+  --c-ink-faint: #5f6a7a;
+  --c-brand: #0e6b5c;
+  --c-brand-strong: #0a5246;
+  --c-brand-soft: #e3f2ee;
+  --c-on-brand: #ffffff;
+  --c-signal: #f2b84b;
+  --c-caution: #8a5a00;
+  --c-caution-soft: #fdf3dc;
+  --c-danger: #b42318;
+  --c-danger-soft: #fdecea;
+  --c-success: #0e6b5c;
+  --c-success-soft: #e3f2ee;
+  --c-info: #1f4f8f;
+  --c-info-soft: #e7eef8;
+  --c-focus: #1f4f8f;
+  --shadow-raised: 0 1px 2px rgb(20 33 61 / 0.06), 0 4px 16px -4px rgb(20 33 61 / 0.08);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --c-canvas: #0f1a1f;
+  --c-surface: #15242a;
+  --c-surface-sunk: #0b1418;
+  --c-line: #26383f;
+  --c-line-strong: #3a5059;
+  --c-ink: #e6eef0;
+  --c-ink-muted: #a9b8bd;
+  --c-ink-faint: #8a9ba1;
+  --c-brand: #4fc3a8;
+  --c-brand-strong: #7dd8c2;
+  --c-brand-soft: #173a35;
+  --c-on-brand: #062a23;
+  --c-signal: #f2b84b;
+  --c-caution: #f2c76e;
+  --c-caution-soft: #3a2f16;
+  --c-danger: #ff8a7a;
+  --c-danger-soft: #3d1c19;
+  --c-success: #4fc3a8;
+  --c-success-soft: #173a35;
+  --c-info: #8fb5ec;
+  --c-info-soft: #18293f;
+  --c-focus: #8fb5ec;
+  --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -8px rgb(0 0 0 / 0.5);
+}
+
+@theme inline {
+  --font-sans: 'Schibsted Grotesk Variable', ui-sans-serif, system-ui, sans-serif;
+
+  --color-canvas: var(--c-canvas);
+  --color-surface: var(--c-surface);
+  --color-surface-sunk: var(--c-surface-sunk);
+  --color-line: var(--c-line);
+  --color-line-strong: var(--c-line-strong);
+  --color-ink: var(--c-ink);
+  --color-ink-muted: var(--c-ink-muted);
+  --color-ink-faint: var(--c-ink-faint);
+  --color-brand: var(--c-brand);
+  --color-brand-strong: var(--c-brand-strong);
+  --color-brand-soft: var(--c-brand-soft);
+  --color-on-brand: var(--c-on-brand);
+  --color-signal: var(--c-signal);
+  --color-caution: var(--c-caution);
+  --color-caution-soft: var(--c-caution-soft);
+  --color-danger: var(--c-danger);
+  --color-danger-soft: var(--c-danger-soft);
+  --color-success: var(--c-success);
+  --color-success-soft: var(--c-success-soft);
+  --color-info: var(--c-info);
+  --color-info-soft: var(--c-info-soft);
+  --color-focus: var(--c-focus);
+  --shadow-raised: var(--shadow-raised);
+
+  /* Type scale (1.25 modular, 17px body) */
+  --text-xs: 0.8125rem;
+  --text-sm: 0.9375rem;
+  --text-base: 1.0625rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5625rem;
+  --text-2xl: 1.953rem;
+  --text-3xl: 2.441rem;
+  --text-4xl: clamp(2.4rem, 1.6rem + 3.6vw, 4.25rem);
+}
+
+@layer base {
+  html {
+    background: var(--c-canvas);
+    color: var(--c-ink);
+    font-family: var(--font-sans);
+    font-size: 100%;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    min-height: 100dvh;
+    font-size: var(--text-base);
+    line-height: 1.55;
+  }
+  :focus-visible {
+    outline: 3px solid var(--c-focus);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  ::selection {
+    background: var(--c-brand-soft);
+    color: var(--c-ink);
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+    letter-spacing: -0.015em;
+  }
+  p {
+    text-wrap: pretty;
+  }
+}
+
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+@keyframes ledger-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.ledger-bar {
+  transform-origin: left center;
+  animation: ledger-grow 900ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}

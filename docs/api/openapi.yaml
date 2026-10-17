@@ -1,0 +1,95 @@
+openapi: 3.1.0
+info:
+  title: CoFoundry AI API
+  version: 0.1.0
+  description: |
+    Derived from Implementation Contract v3.0, Sections 17-21. This file grows phase by phase:
+    only routes that are implemented and tested are listed. Phase 1 implements liveness only.
+
+    Conventions (Section 17): JSON only; success `{data, requestId}`; list
+    `{data, nextCursor, requestId}`; error `{error: {code, message, fieldErrors?}, requestId}`.
+    Mutations require an exact `Origin` (and, from Phase 2, `X-CSRF-Token`).
+servers:
+  - url: /api/v1
+paths:
+  /health:
+    get:
+      summary: Liveness only — reveals no internals (Section 18)
+      security: []
+      responses:
+        '200':
+          description: Service is alive
+          headers:
+            X-Request-Id:
+              schema: { type: string, format: uuid }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, requestId]
+                additionalProperties: false
+                properties:
+                  data:
+                    type: object
+                    required: [status]
+                    additionalProperties: false
+                    properties:
+                      status: { type: string, const: ok }
+                  requestId: { type: string, format: uuid }
+components:
+  schemas:
+    ErrorCode:
+      type: string
+      enum:
+        - BAD_REQUEST
+        - UNAUTHENTICATED
+        - FORBIDDEN
+        - CSRF_INVALID
+        - NOT_FOUND
+        - INVALID_STATE
+        - VERSION_CONFLICT
+        - STALE_RECOMMENDATION
+        - DUPLICATE_PAIR
+        - GATE_CHANGED
+        - EXPIRED
+        - QUESTION_CLOSED
+        - IDEMPOTENCY_CONFLICT
+        - BODY_TOO_LARGE
+        - VALIDATION_FAILED
+        - NO_SKILL_GAP
+        - RATE_LIMITED
+        - INTERNAL_ERROR
+        - UPSTREAM_FAILED
+        - SERVICE_UNAVAILABLE
+        - CAPACITY_LIMIT
+    ErrorResponse:
+      type: object
+      required: [error, requestId]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { $ref: '#/components/schemas/ErrorCode' }
+            message: { type: string }
+            fieldErrors:
+              type: object
+              description: Field path (e.g. body.title) to messages
+              additionalProperties:
+                type: array
+                items: { type: string }
+        requestId: { type: string, format: uuid }
+  responses:
+    NotFound:
+      description: Unknown or unrelated resource
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    RateLimited:
+      description: Too many requests (120/min general limit)
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
