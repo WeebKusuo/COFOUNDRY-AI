@@ -23,6 +23,8 @@ export type AuthStatus = 'loading' | 'signed-in' | 'signed-out' | 'error';
 interface AuthContextValue {
   status: AuthStatus;
   user: SessionUser | null;
+  /** Saved profiles per role (from GET /me); empty until a profile is saved. */
+  profileSummaries: MeData['profileSummaries'];
   /** True when a signed-in session ended without the user signing out (expiry, revocation). */
   sessionExpired: boolean;
   /** True right after the user signed out in this tab. */
@@ -116,6 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return {
       status,
       user,
+      profileSummaries: me.data?.profileSummaries ?? [],
       sessionExpired,
       signedOut,
       error: me.error,

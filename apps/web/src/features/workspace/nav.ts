@@ -48,6 +48,12 @@ export const WORKSPACES: Record<UserRole, WorkspaceDefinition> = {
         purpose: 'Your profile, owned briefs and what needs your attention.',
       },
       {
+        path: 'profile',
+        label: 'Profile',
+        icon: UserRound,
+        purpose: 'Your bio and company link, shown to candidates next to your briefs.',
+      },
+      {
         path: 'briefs',
         label: 'Briefs',
         icon: FileText,

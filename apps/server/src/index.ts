@@ -9,6 +9,8 @@ import { getMigrationStatus } from './db/migrations.js';
 import { AiConfigError, createAiRegistry } from './ai/index.js';
 import { AuthService } from './auth/service.js';
 import { createMongoIdentityStore } from './auth/store.js';
+import { ProfileService } from './profiles/service.js';
+import { createMongoProfileStore } from './profiles/store.js';
 
 /**
  * Process entry point. Fails fast (exit 1) when configuration is invalid, MongoDB is unreachable,
@@ -48,10 +50,10 @@ async function main(): Promise<void> {
     logger.warn({ pending: migrations.pending }, 'pending migrations; run `npm run db:migrate`');
   }
 
-  const auth = new AuthService(createMongoIdentityStore(conn), {
-    sessionTtlSeconds: config.sessionTtlSeconds,
-  });
-  const app = createApp({ config, logger, auth });
+  const identity = createMongoIdentityStore(conn);
+  const auth = new AuthService(identity, { sessionTtlSeconds: config.sessionTtlSeconds });
+  const profiles = new ProfileService(createMongoProfileStore(conn), identity);
+  const app = createApp({ config, logger, auth, profiles });
 
   // Session sweeper: removes expired and idle sessions every 5 minutes (validity is still
   // checked on every request, so the sweep only keeps the collection small).

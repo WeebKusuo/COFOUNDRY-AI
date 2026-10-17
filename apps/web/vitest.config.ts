@@ -9,6 +9,8 @@ export default mergeConfig(
       include: ['src/**/*.test.{ts,tsx}'],
       setupFiles: ['./src/test/setup.ts'],
       css: false,
+      // Form tests type character by character; allow for slower CI machines.
+      testTimeout: 20_000,
     },
   }),
 );

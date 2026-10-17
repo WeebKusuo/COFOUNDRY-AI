@@ -8,6 +8,7 @@ import { sendData } from '../respond.js';
 import { withValidation } from '../validation.js';
 import { currentUser } from '../middleware/auth.js';
 import type { AuthRateLimiters } from '../middleware/rate-limit.js';
+import type { UserRecord } from '../../auth/store.js';
 
 /** Routes reachable without a signed-in session (Section 17). Everything else is denied. */
 export const PUBLIC_ROUTES = ['GET /health', 'GET /auth/csrf', 'POST /auth/login'] as const;
@@ -27,6 +28,7 @@ export function createAuthRouter(
   auth: AuthService,
   cookies: CookieSettings,
   limiters: Pick<AuthRateLimiters, 'loginAccount' | 'loginIp' | 'csrf'>,
+  profileSummaries: (user: UserRecord) => Promise<MeData['profileSummaries']>,
 ): Router {
   const router = Router();
 
@@ -75,8 +77,12 @@ export function createAuthRouter(
   );
 
   // GET /me — own identity only.
-  router.get('/me', (req, res) => {
-    const data: MeData = { user: toSessionUser(currentUser(req)), profileSummaries: [] };
+  router.get('/me', async (req, res) => {
+    const user = currentUser(req);
+    const data: MeData = {
+      user: toSessionUser(user),
+      profileSummaries: await profileSummaries(user),
+    };
     sendData(res, data);
   });
 

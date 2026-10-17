@@ -11,4 +11,8 @@ export const ACCOUNTS = {
   founder: 'founder@demo.cofoundry.test',
   candidate: 'asha@demo.cofoundry.test',
   moderator: 'moderator@demo.cofoundry.test',
+  dev: 'dev@demo.cofoundry.test',
+  mira: 'mira@demo.cofoundry.test',
+  nila: 'nila@demo.cofoundry.test',
+  hidden: 'hidden@demo.cofoundry.test',
 } as const;

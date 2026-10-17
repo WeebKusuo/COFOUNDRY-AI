@@ -9,6 +9,16 @@ import { WORKSPACES } from '../features/workspace/nav';
 import { PlannedScreen, WorkspaceHome } from '../features/workspace/WorkspacePages';
 import { SignInPage } from '../features/auth/SignInPage';
 import { RequireRole } from '../features/auth/RequireRole';
+import { CandidateProfilePage } from '../features/profile/CandidateProfilePage';
+import { FounderProfilePage } from '../features/profile/FounderProfilePage';
+import type { ReactElement } from 'react';
+import type { UserRole } from '@cofoundry/shared';
+
+/** Screens built so far; every other nav destination renders the "not available yet" state. */
+const SCREENS: Partial<Record<UserRole, Record<string, ReactElement>>> = {
+  candidate: { profile: <CandidateProfilePage /> },
+  founder: { profile: <FounderProfilePage /> },
+};
 
 /**
  * Route table. Workspace routes are generated from the navigation config so every nav item has a
@@ -34,7 +44,10 @@ export const routes: RouteObject[] = [
     children: WORKSPACES[role].nav.map((item) =>
       item.path === ''
         ? { index: true, element: <WorkspaceHome role={role} /> }
-        : { path: item.path, element: <PlannedScreen role={role} item={item} /> },
+        : {
+            path: item.path,
+            element: SCREENS[role]?.[item.path] ?? <PlannedScreen role={role} item={item} />,
+          },
     ),
   })),
   {

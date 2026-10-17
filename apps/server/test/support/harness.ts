@@ -8,6 +8,9 @@ import type { AppConfig } from '../../src/config/env.js';
 import { createApp, type AppDependencies } from '../../src/http/app.js';
 import { TEST_ORIGIN, silentLogger, testConfig } from '../helpers.js';
 import { MemoryIdentityStore } from './memory-store.js';
+import { MemoryProfileStore } from './memory-profile-store.js';
+import { ProfileService } from '../../src/profiles/service.js';
+import type { ProfileStore } from '../../src/profiles/store.js';
 
 export const TEST_PASSWORD = 'correct-horse-battery';
 
@@ -42,11 +45,14 @@ export interface Harness {
   app: Express;
   store: IdentityStore;
   auth: AuthService;
+  profileStore: ProfileStore;
+  profiles: ProfileService;
 }
 
 export function buildHarness(
   options: {
     store?: IdentityStore;
+    profileStore?: ProfileStore;
     config?: Partial<AppConfig>;
     authOptions?: Partial<AuthServiceOptions>;
   } & Pick<AppDependencies, 'extraV1Routes' | 'rateLimiters'> = {},
@@ -57,14 +63,17 @@ export function buildHarness(
     sessionTtlSeconds: config.sessionTtlSeconds,
     ...options.authOptions,
   });
+  const profileStore = options.profileStore ?? new MemoryProfileStore();
+  const profiles = new ProfileService(profileStore, store);
   const app = createApp({
     config,
     logger: silentLogger,
     auth,
+    profiles,
     ...(options.extraV1Routes ? { extraV1Routes: options.extraV1Routes } : {}),
     ...(options.rateLimiters ? { rateLimiters: options.rateLimiters } : {}),
   });
-  return { app, store, auth };
+  return { app, store, auth, profileStore, profiles };
 }
 
 /** Reads the session cookie value from a Set-Cookie header list. */
@@ -95,9 +104,16 @@ export class TestClient {
   }
 
   async post(path: string, body: object = {}) {
+    return this.send('post', path, body);
+  }
+
+  async put(path: string, body: object = {}) {
+    return this.send('put', path, body);
+  }
+
+  private async send(method: 'post' | 'put', path: string, body: object) {
     if (!this.csrf) await this.refreshCsrf();
-    return this.agent
-      .post(`/api/v1${path}`)
+    return this.agent[method](`/api/v1${path}`)
       .set('Origin', TEST_ORIGIN)
       .set('X-CSRF-Token', this.csrf ?? '')
       .send(body);

@@ -14,6 +14,8 @@ import { runMigrations } from '../apps/server/src/db/migrations.js';
 import { seedDemoAccounts } from '../apps/server/src/db/seed.js';
 import { AuthService } from '../apps/server/src/auth/service.js';
 import { createMongoIdentityStore } from '../apps/server/src/auth/store.js';
+import { ProfileService } from '../apps/server/src/profiles/service.js';
+import { createMongoProfileStore } from '../apps/server/src/profiles/store.js';
 import { createApp } from '../apps/server/src/http/app.js';
 import { E2E_PASSWORD, E2E_PORT, STATE_FILE } from './shared.js';
 
@@ -50,10 +52,10 @@ async function main() {
   await runMigrations(conn, logger);
   await seedDemoAccounts(conn, logger, { demoMode: true, password: E2E_PASSWORD });
 
-  const auth = new AuthService(createMongoIdentityStore(conn), {
-    sessionTtlSeconds: config.sessionTtlSeconds,
-  });
-  const server = http.createServer(createApp({ config, logger, auth }));
+  const identity = createMongoIdentityStore(conn);
+  const auth = new AuthService(identity, { sessionTtlSeconds: config.sessionTtlSeconds });
+  const profiles = new ProfileService(createMongoProfileStore(conn), identity);
+  const server = http.createServer(createApp({ config, logger, auth, profiles }));
   await new Promise<void>((resolve) => server.listen(E2E_PORT, resolve));
   fs.writeFileSync(STATE_FILE, JSON.stringify({ mongodbUri: uri }));
   process.stdout.write(`e2e server ready on http://localhost:${E2E_PORT}\n`);

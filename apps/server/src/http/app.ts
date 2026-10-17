@@ -9,6 +9,7 @@ import { defaultAuthRateLimiters, type AuthRateLimiters } from './middleware/rat
 import { loadSession } from './middleware/auth.js';
 import { cookieSettings } from '../auth/cookies.js';
 import type { AuthService } from '../auth/service.js';
+import type { ProfileService } from '../profiles/service.js';
 import { apiNotFound, errorHandler } from './middleware/error-handler.js';
 import { createV1Router } from './routes/v1.js';
 import { createStaticWebRouter } from './static-web.js';
@@ -17,6 +18,7 @@ export interface AppDependencies {
   config: AppConfig;
   logger: Logger;
   auth: AuthService;
+  profiles: ProfileService;
   /** Override individual rate limiters (tests use tiny windows). */
   rateLimiters?: Partial<AuthRateLimiters>;
   /** Test-only routes mounted under /api/v1 behind the CSRF and sign-in guards. */
@@ -75,6 +77,7 @@ export function createApp(deps: AppDependencies): Express {
     '/v1',
     createV1Router({
       auth: deps.auth,
+      profiles: deps.profiles,
       cookies,
       limiters,
       ...(deps.extraV1Routes ? { extraRoutes: deps.extraV1Routes } : {}),

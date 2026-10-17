@@ -58,6 +58,32 @@ export const MIGRATIONS: readonly Migration[] = [
       await sessions.createIndex({ userId: 1 }, { name: 'userId' });
     },
   },
+  {
+    version: 3,
+    name: 'profiles-and-consent',
+    up: async (conn) => {
+      // Section 14: CandidateProfile and FounderProfile are unique per user; ConsentRecord allows
+      // one ACTIVE record per user/purpose/target (withdrawn records are kept as history). The
+      // active rule is a unique sparse index on activeKey, which only active records carry.
+      for (const name of ['candidate_profiles', 'founder_profiles', 'consent_records']) {
+        await ensureCollection(conn, name);
+      }
+      const db = conn.db;
+      if (!db) throw new Error('database not connected');
+      await db
+        .collection('candidate_profiles')
+        .createIndex({ userId: 1 }, { unique: true, name: 'userId_unique' });
+      await db
+        .collection('founder_profiles')
+        .createIndex({ userId: 1 }, { unique: true, name: 'userId_unique' });
+      const consents = db.collection('consent_records');
+      await consents.createIndex(
+        { activeKey: 1 },
+        { unique: true, sparse: true, name: 'active_consent_unique' },
+      );
+      await consents.createIndex({ userId: 1, purpose: 1 }, { name: 'userId_purpose' });
+    },
+  },
 ];
 
 export const LATEST_MIGRATION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);

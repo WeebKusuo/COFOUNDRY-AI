@@ -102,7 +102,7 @@ test('an expired session sends the user to sign-in with an explanation, then bac
 }) => {
   await page.clock.install();
   await signIn(page, ACCOUNTS.founder);
-  await page.getByRole('link', { name: 'Requests' }).first().click();
+  await page.getByRole('link', { name: 'Requests', exact: true }).first().click();
   await expect(page.getByRole('heading', { level: 1, name: 'Requests' })).toBeVisible();
 
   // End the session on the server, as idle or absolute expiry would.

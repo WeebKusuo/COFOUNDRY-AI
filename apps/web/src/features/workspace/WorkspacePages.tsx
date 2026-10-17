@@ -1,7 +1,8 @@
 import { Link } from 'react-router';
 import { Construction } from 'lucide-react';
 import type { UserRole } from '@cofoundry/shared';
-import { Card, EmptyState } from '../../components/ui';
+import { Badge, ButtonLink, Card, EmptyState } from '../../components/ui';
+import { useAuth } from '../../lib/auth';
 import { WORKSPACES, workspaceHref, type NavItem } from './nav';
 
 function PageHeader({ title, description }: { title: string; description: string }) {
@@ -20,6 +21,7 @@ export function WorkspaceHome({ role }: { role: UserRole }) {
   return (
     <>
       <PageHeader title={def.title} description={def.summary} />
+      {role !== 'moderator' ? <ProfileStatus role={role} /> : null}
       <h2 className="mb-3 text-lg font-semibold text-ink">Areas in this workspace</h2>
       <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {areas.map((item) => {
@@ -41,6 +43,36 @@ export function WorkspaceHome({ role }: { role: UserRole }) {
         })}
       </ul>
     </>
+  );
+}
+
+function ProfileStatus({ role }: { role: 'founder' | 'candidate' }) {
+  const { profileSummaries } = useAuth();
+  const summary = profileSummaries.find((p) => p.role === role);
+  const href = `${WORKSPACES[role].basePath}/profile`;
+  return (
+    <Card
+      as="section"
+      aria-label="Profile status"
+      className="mb-8 flex flex-wrap items-center justify-between gap-4 shadow-none"
+    >
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="font-semibold text-ink">Your profile</h2>
+          <Badge tone={summary?.complete ? 'brand' : 'caution'}>
+            {!summary ? 'Not started' : summary.complete ? 'Complete' : 'Incomplete'}
+          </Badge>
+        </div>
+        <p className="mt-1 text-sm text-ink-muted">
+          {role === 'candidate'
+            ? 'A complete profile is required before you can turn on discovery.'
+            : 'Candidates see your bio and company link next to your briefs.'}
+        </p>
+      </div>
+      <ButtonLink to={href} variant="secondary" size="sm">
+        {summary ? 'Edit profile' : 'Create profile'}
+      </ButtonLink>
+    </Card>
   );
 }
 

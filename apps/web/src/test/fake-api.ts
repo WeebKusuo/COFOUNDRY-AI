@@ -12,6 +12,12 @@ export interface FakeApiOptions {
   /** Force sign-in to fail with this error code. */
   loginError?: { status: number; code: string; message: string; retryAfter?: number };
   healthy?: boolean;
+  /** Extra signed-in routes: return a response, or undefined to fall through to 404. */
+  routes?: (
+    method: string,
+    path: string,
+    body: unknown,
+  ) => { status: number; body?: unknown } | undefined;
 }
 
 export function demoUser(roles: UserRole[], overrides: Partial<SessionUser> = {}): SessionUser {
@@ -89,6 +95,16 @@ export function installFakeApi(options: FakeApiOptions = {}) {
     }
     if (path === '/me') {
       return json(200, { data: { user: state.user, profileSummaries: [] }, requestId: 'req' });
+    }
+    const extra = options.routes?.(
+      method,
+      path,
+      init?.body ? JSON.parse(String(init.body)) : undefined,
+    );
+    if (extra) {
+      return extra.body === undefined
+        ? new Response(null, { status: extra.status })
+        : json(extra.status, extra.body);
     }
     return err(404, 'NOT_FOUND', 'The requested resource was not found.');
   });

@@ -6,9 +6,12 @@ import { requireCsrf, requireSignedInExcept } from '../middleware/auth.js';
 import type { AuthRateLimiters } from '../middleware/rate-limit.js';
 import { sendData } from '../respond.js';
 import { PUBLIC_ROUTES, createAuthRouter } from './auth.js';
+import { createProfileRouter } from './profiles.js';
+import type { ProfileService } from '../../profiles/service.js';
 
 export interface V1Options {
   auth: AuthService;
+  profiles: ProfileService;
   cookies: CookieSettings;
   limiters: AuthRateLimiters;
   /** Test-only routes, mounted behind the same CSRF and deny-by-default guards. */
@@ -31,7 +34,12 @@ export function createV1Router(options: V1Options): Router {
     sendData(res, data);
   });
 
-  router.use(createAuthRouter(options.auth, options.cookies, options.limiters));
+  router.use(
+    createAuthRouter(options.auth, options.cookies, options.limiters, (user) =>
+      options.profiles.summaries(user),
+    ),
+  );
+  router.use(createProfileRouter(options.profiles));
   options.extraRoutes?.(router);
   return router;
 }

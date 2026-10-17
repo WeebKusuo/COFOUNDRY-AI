@@ -7,3 +7,6 @@ export { Spinner } from './Spinner';
 export { EmptyState, ErrorState, LoadingState, QueryState } from './States';
 export { Switch } from './Switch';
 export { Tabs, type TabItem } from './Tabs';
+export { ChipGroup, type ChipOption } from './ChipGroup';
+export { SegmentedChoice } from './SegmentedChoice';
+export { ExternalLink } from './ExternalLink';

@@ -36,7 +36,7 @@ describe('migrations', () => {
   });
 
   it('applies pending migrations once and is idempotent', async () => {
-    expect(await runMigrations(db.conn, silentLogger)).toEqual([1, 2]);
+    expect(await runMigrations(db.conn, silentLogger)).toEqual([1, 2, 3]);
     expect(await runMigrations(db.conn, silentLogger)).toEqual([]);
     const status = await getMigrationStatus(db.conn);
     expect(status).toMatchObject({ current: LATEST_MIGRATION, upToDate: true, pending: [] });
@@ -57,6 +57,20 @@ describe('migrations', () => {
     expect(byName(sessions, 'expiresAt')).toMatchObject({ key: { expiresAt: 1 } });
     expect(byName(sessions, 'lastSeenAt')).toMatchObject({ key: { lastSeenAt: 1 } });
     expect(byName(sessions, 'userId')).toMatchObject({ key: { userId: 1 } });
+  });
+
+  it('creates the profile and consent indexes', async () => {
+    const list = (name: string) => db.conn.db!.collection(name).indexes();
+    const candidate = await list('candidate_profiles');
+    const founder = await list('founder_profiles');
+    const consent = await list('consent_records');
+    expect(candidate.find((i) => i.name === 'userId_unique')).toMatchObject({ unique: true });
+    expect(founder.find((i) => i.name === 'userId_unique')).toMatchObject({ unique: true });
+    const active = consent.find((i) => i.name === 'active_consent_unique');
+    expect(active).toMatchObject({ unique: true, key: { activeKey: 1 } });
+    // MongoDB reports sparse: true. Behaviour (many withdrawn records, one active) is asserted in
+    // profiles.integration.test.ts on every server.
+    if (active && 'sparse' in active) expect(active.sparse).toBe(true);
   });
 
   it('rejects duplicate migration versions', async () => {

@@ -43,6 +43,7 @@ async function main(): Promise<void> {
         updated: summary.updated.length,
         unchanged: summary.unchanged.length,
         removed: summary.removed,
+        profilesCreated: summary.profilesCreated,
       },
       'demo accounts seeded',
     );
