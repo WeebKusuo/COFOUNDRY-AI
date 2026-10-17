@@ -1,9 +1,10 @@
 import type { IndustryTag, MissionTag, SkillId } from './constants.js';
 
 /**
- * Profile contracts (Sections 03, 14, 18). Profiles hold self-reported data only: there is no
- * resume upload, parsing or verification in v3.0. Projects with a syntactically valid HTTPS link
- * are labelled "project_linked", which never means the link was fetched or checked.
+ * Profile contracts (Sections 03, 14, 18). Profiles hold self-reported data only. Projects with a
+ * syntactically valid HTTPS link are labelled "project_linked", which never means the link was
+ * fetched or checked. The optional private resume (Phase 4 amendment) lives in resume.ts and is
+ * never part of any profile projection.
  */
 
 export const PROFILE_LIMITS = {

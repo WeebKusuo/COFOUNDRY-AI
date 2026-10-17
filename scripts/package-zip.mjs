@@ -24,6 +24,8 @@ const EXCLUDED_DIRS = new Set([
   '.turbo',
   'test-results',
   'playwright-report',
+  // Private runtime data, e.g. uploaded resumes (apps/server/var/resumes).
+  'var',
 ]);
 const EXCLUDED_FILES = [
   /^\.env$/,
