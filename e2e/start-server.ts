@@ -28,6 +28,8 @@ import { ResumeService } from '../apps/server/src/resumes/service.js';
 import { createPdfTextExtractor } from '../apps/server/src/resumes/extract.js';
 import { createLocalFileStorage } from '../apps/server/src/resumes/storage.js';
 import { createMongoResumeStore } from '../apps/server/src/resumes/store.js';
+import { RecommendationService } from '../apps/server/src/recommendations/service.js';
+import { createMongoRecommendationStore } from '../apps/server/src/recommendations/store.js';
 import { E2E_PASSWORD, E2E_PORT, STATE_FILE } from './shared.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -72,7 +74,14 @@ async function main() {
   const auth = new AuthService(identity, { sessionTtlSeconds: config.sessionTtlSeconds });
   const profileStore = createMongoProfileStore(conn);
   const profiles = new ProfileService(profileStore, identity);
-  const briefs = new BriefService(createMongoBriefStore(conn), identity, profileStore);
+  const briefStore = createMongoBriefStore(conn);
+  const briefs = new BriefService(briefStore, identity, profileStore);
+  const recommendations = new RecommendationService(
+    createMongoRecommendationStore(conn),
+    briefStore,
+    identity,
+    profileStore,
+  );
   const idempotency = createMongoIdempotencyStore(conn);
   const resumes = new ResumeService(
     createMongoResumeStore(conn),
@@ -90,6 +99,7 @@ async function main() {
       briefs,
       idempotency,
       resumes,
+      recommendations,
       // The suite signs in dozens of times per minute from one IP. Only the CSRF bootstrap limit
       // is raised here; its real 30/min value is covered by apps/server/test/rate-limits.test.ts,
       // and every other limit (login, general, uploads) keeps its production value.

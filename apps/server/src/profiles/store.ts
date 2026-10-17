@@ -72,6 +72,16 @@ export interface ProfileStore {
     fields: FounderProfileFields,
   ): Promise<FounderProfileRecord | 'conflict'>;
   hasActiveConsent(key: ConsentKey): Promise<boolean>;
+  /** Bulk read for matching: candidate profiles of these users (one query). */
+  findCandidates(
+    userIds: readonly string[],
+    options?: { discoverableOnly?: boolean; limit?: number },
+  ): Promise<CandidateProfileRecord[]>;
+  /** Bulk read: which of these users hold an active consent for `purpose` about themselves. */
+  activeSelfConsentUserIds(
+    purpose: ConsentPurpose,
+    userIds: readonly string[],
+  ): Promise<Set<string>>;
   /** Idempotent: does nothing when an active record already exists. */
   grantConsent(key: ConsentKey, policyVersion: string, at: Date): Promise<void>;
   /** Marks every active record for the key withdrawn; returns how many were withdrawn. */
@@ -193,6 +203,30 @@ export function createMongoProfileStore(conn: Connection): ProfileStore {
         .lean<FounderProfileDoc>()
         .exec();
       return doc ? toFounder(doc) : 'conflict';
+    },
+
+    async findCandidates(userIds, options = {}) {
+      if (userIds.length === 0) return [];
+      let q = CandidateProfile.find({
+        userId: { $in: userIds.map(oid) },
+        ...(options.discoverableOnly ? { discoveryEnabled: true } : {}),
+      }).sort({ userId: 1 });
+      if (options.limit !== undefined) q = q.limit(options.limit);
+      const docs = await q.lean<CandidateProfileDoc[]>().exec();
+      return docs.map(toCandidate);
+    },
+
+    async activeSelfConsentUserIds(purpose, userIds) {
+      if (userIds.length === 0) return new Set();
+      const docs = await ConsentRecord.find(
+        { userId: { $in: userIds.map(oid) }, purpose, withdrawnAt: null },
+        { userId: 1, targetId: 1 },
+      )
+        .lean<Array<{ userId: mongoose.Types.ObjectId; targetId: mongoose.Types.ObjectId }>>()
+        .exec();
+      return new Set(
+        docs.filter((d) => d.userId.equals(d.targetId)).map((d) => d.userId.toHexString()),
+      );
     },
 
     async hasActiveConsent(key) {

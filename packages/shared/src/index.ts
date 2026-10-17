@@ -7,3 +7,4 @@ export * from './profile.js';
 export * from './brief.js';
 export * from './resume.js';
 export * from './interview.js';
+export * from './matching.js';

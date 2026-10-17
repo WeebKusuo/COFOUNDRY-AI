@@ -7,6 +7,7 @@ import {
 import { briefModels } from '../briefs/models.js';
 import { BRIEF_CONSTANTS } from '../briefs/store.js';
 import { resumeModel } from '../resumes/models.js';
+import { recommendationModel } from '../recommendations/models.js';
 import { assertPasswordPolicy, hashPassword, verifyPassword } from '../auth/crypto.js';
 import { identityModels } from '../auth/models.js';
 import type { Logger } from '../lib/logger.js';
@@ -85,6 +86,9 @@ export async function seedDemoAccounts(
     await ConsentRecord.deleteMany({ userId: { $in: ids } }).exec();
     const { StartupBrief, IdempotencyRecord } = briefModels(conn);
     await StartupBrief.deleteMany({ founderUserId: { $in: ids } }).exec();
+    await recommendationModel(conn)
+      .deleteMany({ founderUserId: { $in: ids } })
+      .exec();
     await IdempotencyRecord.deleteMany({ actorUserId: { $in: ids } }).exec();
     const Resume = resumeModel(conn);
     const resumes = await Resume.find(

@@ -85,9 +85,9 @@ describe('workspace layouts (signed in)', () => {
 
   it('marks the active nav item and shows an honest planned-screen state', async () => {
     installFakeApi({ user: demoUser(['founder']) });
-    renderRoute('/founder/candidates');
+    renderRoute('/founder/interviews');
     const nav = (await screen.findAllByRole('navigation', { name: /founder/i }))[0]!;
-    expect(within(nav).getByRole('link', { name: 'Candidates' })).toHaveAttribute(
+    expect(within(nav).getByRole('link', { name: 'Interviews' })).toHaveAttribute(
       'aria-current',
       'page',
     );

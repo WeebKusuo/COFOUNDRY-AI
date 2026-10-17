@@ -14,7 +14,9 @@ and agree a bounded trial sprint. The engineering source of truth is
 | 02    | Authentication and security: seeded accounts, sessions, CSRF, RBAC, sign-in UI, E2E tests                      | Done — [PHASE_02_README](docs/phases/PHASE_02_README.md) |
 | 03    | Candidate and founder profiles: skills, projects, availability, discovery consent, privacy-safe projection     | Done — [PHASE_03_README](docs/phases/PHASE_03_README.md) |
 | 04    | Startup briefs (draft/publish/close/clone), private resume PDFs, AI interview contracts                        | Done — [PHASE_04_README](docs/phases/PHASE_04_README.md) |
-| 05–18 | Matching, interviews, requests, sprints, safety, privacy, deployment                                           | Not started                                              |
+| 05    | Deterministic matching engine match-v3.0: hard gates, exact scoring, grouping                                  | Done — [PHASE_05_README](docs/phases/PHASE_05_README.md) |
+| 06    | Recommendation batches (15-minute freshness, privacy re-checks) and founder dashboard                          | Done — [PHASE_06_README](docs/phases/PHASE_06_README.md) |
+| 07–18 | Interviews, requests, sprints, safety, privacy, deployment                                                     | Not started                                              |
 
 What exists today versus what is deferred:
 
@@ -35,8 +37,13 @@ What exists today versus what is deferred:
   `GET /candidate/resume/text`; private PDF storage, bounded text extraction, consent, redaction;
   resume section on the candidate profile. AI interview data contracts and integration points
   (no model calls).
+  Matching (match-v3.0, deterministic, no AI) and recommendations:
+  `POST/GET /startups/:id/recommendations` with stored 15-minute batches, privacy re-checks on
+  every read and the founder Candidates dashboard with explained scores
+  ([docs/architecture/MATCHING.md](docs/architecture/MATCHING.md)).
 - **Not yet implemented:** full-brief access grants (`POST/DELETE /startups/:id/access`),
-  matching, interviews and every later feature route; worker jobs; blocks. Remaining workspace
+  interview invitations (the dashboard's "Invite to interview" is shown as unavailable),
+  interviews and every later feature route; worker jobs; blocks. Remaining workspace
   screens say "Not available yet".
 - **Never provided (contract v3.0):** public sign-up, email verification, password reset.
 - **Off-platform by contract:** live walkthroughs and payments.
@@ -128,7 +135,7 @@ not a replica set also set `MONGODB_TEST_EXPECT_TRANSACTIONS=false`.
 ## Packaging
 
 ```bash
-npm run package:zip -- 04    # writes release/cofoundry-ai-phase-04.zip
+npm run package:zip -- 06    # writes release/cofoundry-ai-phase-06.zip
 ```
 
 The ZIP excludes `node_modules`, `.git`, `.env*` (except `.env.example`), build output, caches and

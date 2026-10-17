@@ -13,13 +13,18 @@ import { CandidateProfilePage } from '../features/profile/CandidateProfilePage';
 import { FounderProfilePage } from '../features/profile/FounderProfilePage';
 import { BriefsListPage } from '../features/briefs/BriefsListPage';
 import { BriefEditorPage } from '../features/briefs/BriefEditorPage';
+import { RecommendationsPage } from '../features/recommendations/RecommendationsPage';
 import type { ReactElement } from 'react';
 import type { UserRole } from '@cofoundry/shared';
 
 /** Screens built so far; every other nav destination renders the "not available yet" state. */
 const SCREENS: Partial<Record<UserRole, Record<string, ReactElement>>> = {
   candidate: { profile: <CandidateProfilePage /> },
-  founder: { profile: <FounderProfilePage />, briefs: <BriefsListPage /> },
+  founder: {
+    profile: <FounderProfilePage />,
+    briefs: <BriefsListPage />,
+    candidates: <RecommendationsPage />,
+  },
 };
 
 /** Detail routes below a nav destination (not nav items themselves). */

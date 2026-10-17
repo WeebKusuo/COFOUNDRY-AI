@@ -27,6 +27,12 @@ export class MemoryIdentityStore implements IdentityStore {
       .filter((u) => u.cohortId === cohortId && u.status === 'active' && u.roles.includes(role))
       .map((u) => u.id);
   }
+  async findUsersByIds(ids: readonly string[]) {
+    return ids.flatMap((id) => {
+      const u = this.users.get(id);
+      return u ? [u] : [];
+    });
+  }
   async createSession(session: Omit<SessionRecord, 'id'>) {
     if ([...this.sessions.values()].some((s) => s.tokenHash === session.tokenHash)) {
       throw new Error('duplicate tokenHash');

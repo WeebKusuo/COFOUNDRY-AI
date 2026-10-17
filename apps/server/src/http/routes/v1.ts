@@ -13,6 +13,8 @@ import type { IdempotencyStore } from '../../briefs/store.js';
 import { createBriefRouter } from './briefs.js';
 import type { ResumeService } from '../../resumes/service.js';
 import { createResumeRouter } from './resumes.js';
+import type { RecommendationService } from '../../recommendations/service.js';
+import { createRecommendationRouter } from './recommendations.js';
 import type { RequestHandler } from 'express';
 
 export interface V1Options {
@@ -21,6 +23,9 @@ export interface V1Options {
   briefs: BriefService;
   idempotency: IdempotencyStore;
   resumes: ResumeService;
+  recommendations: RecommendationService;
+  /** Override the discovery search limiter (tests). */
+  searchLimiter?: RequestHandler;
   /** Override the resume upload limiter (tests). */
   resumeUploadLimiter?: RequestHandler;
   cookies: CookieSettings;
@@ -53,6 +58,9 @@ export function createV1Router(options: V1Options): Router {
   router.use(createProfileRouter(options.profiles));
   router.use(createBriefRouter(options.briefs, options.idempotency));
   router.use(createResumeRouter(options.resumes, options.resumeUploadLimiter));
+  router.use(
+    createRecommendationRouter(options.recommendations, options.idempotency, options.searchLimiter),
+  );
   options.extraRoutes?.(router);
   return router;
 }

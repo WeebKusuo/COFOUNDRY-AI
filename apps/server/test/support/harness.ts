@@ -19,6 +19,10 @@ import { createPdfTextExtractor, type PdfTextExtractor } from '../../src/resumes
 import { createMemoryFileStorage, type ResumeFileStorage } from '../../src/resumes/storage.js';
 import type { ResumeStore } from '../../src/resumes/store.js';
 import { MemoryResumeStore } from './memory-resume-store.js';
+import { RecommendationService } from '../../src/recommendations/service.js';
+import type { RecommendationStore } from '../../src/recommendations/store.js';
+import type { BlockPolicy } from '../../src/safety/blocks.js';
+import { MemoryRecommendationStore } from './memory-recommendation-store.js';
 
 export const TEST_PASSWORD = 'correct-horse-battery';
 
@@ -61,6 +65,8 @@ export interface Harness {
   resumeStore: ResumeStore;
   resumeFiles: ResumeFileStorage;
   resumes: ResumeService;
+  recommendationStore: RecommendationStore;
+  recommendations: RecommendationService;
 }
 
 export function buildHarness(
@@ -72,9 +78,15 @@ export function buildHarness(
     resumeStore?: ResumeStore;
     resumeFiles?: ResumeFileStorage;
     extractor?: PdfTextExtractor;
+    recommendationStore?: RecommendationStore;
+    blocks?: BlockPolicy;
+    now?: () => Date;
     config?: Partial<AppConfig>;
     authOptions?: Partial<AuthServiceOptions>;
-  } & Pick<AppDependencies, 'extraV1Routes' | 'rateLimiters' | 'resumeUploadLimiter'> = {},
+  } & Pick<
+    AppDependencies,
+    'extraV1Routes' | 'rateLimiters' | 'resumeUploadLimiter' | 'searchLimiter'
+  > = {},
 ): Harness {
   const store = options.store ?? new MemoryIdentityStore();
   const config = testConfig(options.config);
@@ -96,6 +108,15 @@ export function buildHarness(
     options.extractor ?? createPdfTextExtractor(),
     silentLogger,
   );
+  const recommendationStore = options.recommendationStore ?? new MemoryRecommendationStore();
+  const recommendations = new RecommendationService(
+    recommendationStore,
+    briefStore,
+    store,
+    profileStore,
+    options.blocks,
+    options.now,
+  );
   const app = createApp({
     config,
     logger: silentLogger,
@@ -104,6 +125,8 @@ export function buildHarness(
     briefs,
     idempotency: idempotencyStore,
     resumes,
+    recommendations,
+    ...(options.searchLimiter ? { searchLimiter: options.searchLimiter } : {}),
     ...(options.resumeUploadLimiter ? { resumeUploadLimiter: options.resumeUploadLimiter } : {}),
     ...(options.extraV1Routes ? { extraV1Routes: options.extraV1Routes } : {}),
     ...(options.rateLimiters ? { rateLimiters: options.rateLimiters } : {}),
@@ -120,6 +143,8 @@ export function buildHarness(
     resumeStore,
     resumeFiles,
     resumes,
+    recommendationStore,
+    recommendations,
   };
 }
 

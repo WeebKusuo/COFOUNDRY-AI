@@ -35,6 +35,8 @@ export interface IdentityStore {
   findUserById(id: string): Promise<UserRecord | null>;
   /** Ids of active users holding `role` in a cohort (discovery scope; cohorts are small). */
   listActiveUserIdsInCohort(cohortId: string, role: UserRole): Promise<string[]>;
+  /** Bulk read by id (one query); unknown ids are skipped. */
+  findUsersByIds(ids: readonly string[]): Promise<UserRecord[]>;
   createSession(session: NewSession): Promise<SessionRecord>;
   findSessionByTokenHash(tokenHash: string): Promise<SessionRecord | null>;
   touchSession(id: string, lastSeenAt: Date): Promise<void>;
@@ -93,6 +95,14 @@ export function createMongoIdentityStore(conn: Connection): IdentityStore {
         .lean<Array<{ _id: mongoose.Types.ObjectId }>>()
         .exec();
       return docs.map((d) => d._id.toHexString());
+    },
+    async findUsersByIds(ids) {
+      const valid = ids.filter(isObjectId);
+      if (valid.length === 0) return [];
+      const docs = await User.find({ _id: { $in: valid } })
+        .lean<UserDoc[]>()
+        .exec();
+      return docs.map(toUser);
     },
     async createSession(session) {
       const doc = await Session.create({

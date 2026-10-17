@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
   title: CoFoundry AI API
-  version: 0.4.0
+  version: 0.6.0
   description: |
     Derived from Implementation Contract v3.0, Sections 17-21. This file grows phase by phase:
-    only routes that are implemented and tested are listed (Phase 4: health, identity, profiles, startup briefs, candidate resume).
+    only routes that are implemented and tested are listed (Phase 6: health, identity, profiles, startup briefs, candidate resume, recommendations).
 
     Conventions (Section 17): JSON only; success `{data, requestId}`; list
     `{data, nextCursor, requestId}`; error `{error: {code, message, fieldErrors?}, requestId}`.
@@ -458,6 +458,60 @@ paths:
       responses:
         '200': { description: ResumeTextData }
         '404': { $ref: '#/components/responses/NotFound' }
+  /startups/{id}/recommendations:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Run a match-v3.0 search for an owned open brief and store the batch
+      description: |
+        Founder owner only (other founders 404, non-founders 403). Pool: active, discoverable,
+        consenting candidates of the founder's cohort, never the founder, never blocked. Hard
+        gates, then exact Section 04/05 scoring; groups recommendations / provisional / nearMatches,
+        top 3 each with unrounded score >= 50. The batch expires after 15 minutes. Draft or closed
+        brief -> 409 INVALID_STATE; no skill gap -> 422 NO_SKILL_GAP; more than 1,000
+        discoverable candidates -> 503 CAPACITY_LIMIT; 10 searches per minute per founder.
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        '201':
+          {
+            description: Search response,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: '#/components/schemas/RecommendationEnvelope' } },
+              },
+          }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/Error' }
+    get:
+      summary: Latest valid batch for the brief
+      description: |
+        Re-checks every entry's visibility first and withholds candidates who are no longer
+        visible, silently (no count, marker or refill). 409
+        STALE_RECOMMENDATION when there is no batch, it expired, the brief closed or changed, or
+        any remaining candidate's profile revision changed.
+      responses:
+        '200':
+          {
+            description: Search response,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: '#/components/schemas/RecommendationEnvelope' } },
+              },
+          }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Error' }
 components:
   parameters:
     IdempotencyKey:
@@ -472,6 +526,97 @@ components:
       required: true
       schema: { type: string }
   schemas:
+    RecommendationEnvelope:
+      type: object
+      required: [data, requestId]
+      properties:
+        requestId: { type: string }
+        data:
+          type: object
+          required:
+            [
+              batchId,
+              briefId,
+              briefVersion,
+              generatedAt,
+              expiresAt,
+              algorithmVersion,
+              recommendations,
+              provisional,
+              nearMatches,
+              exclusions,
+            ]
+          properties:
+            batchId: { type: string }
+            briefId: { type: string }
+            briefVersion: { type: integer }
+            generatedAt: { type: string, format: date-time }
+            expiresAt: { type: string, format: date-time }
+            algorithmVersion: { type: string, const: match-v3.0 }
+            recommendations:
+              {
+                type: array,
+                maxItems: 3,
+                items: { $ref: '#/components/schemas/RecommendationEntry' },
+              }
+            provisional:
+              {
+                type: array,
+                maxItems: 3,
+                items: { $ref: '#/components/schemas/RecommendationEntry' },
+              }
+            nearMatches:
+              {
+                type: array,
+                maxItems: 3,
+                items: { $ref: '#/components/schemas/RecommendationEntry' },
+              }
+            exclusions:
+              type: object
+              properties:
+                totalExcluded: { type: integer }
+                gates:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      code:
+                        {
+                          type: string,
+                          enum:
+                            [opportunity_type, essential_skill, minimum_hours, minimum_commitment],
+                        }
+                      count: { type: integer }
+    RecommendationEntry:
+      type: object
+      description: Shapes in packages/shared/src/matching.ts. Scores are unrounded; display two decimals.
+      properties:
+        candidateUserId: { type: string }
+        profileRevision: { type: integer }
+        group: { type: string, enum: [recommendations, provisional, nearMatches] }
+        score: { type: number }
+        components:
+          {
+            type: object,
+            properties:
+              {
+                S: { type: number },
+                A: { type: number },
+                I: { type: number },
+                P: { type: [number, 'null'] },
+              },
+          }
+        weights: { type: object }
+        coverageWeight: { type: number, enum: [1, 0.8] }
+        provisional: { type: boolean }
+        missingFactors: { type: array, items: { type: string, const: projectRelevance } }
+        nearMatchDeficits: { type: array, items: { type: object } }
+        reasons: { type: array, items: { type: string } }
+        skills: { type: array, items: { type: object } }
+        projects: { type: array, items: { type: object } }
+        bestProjectId: { type: [string, 'null'] }
+        profile:
+          { type: object, description: 'ProfilePublic candidate fields and displayName only' }
     ListEnvelope:
       type: object
       required: [data, nextCursor, requestId]

@@ -129,6 +129,23 @@ export const MIGRATIONS: readonly Migration[] = [
         .createIndex({ userId: 1 }, { unique: true, name: 'userId_unique' });
     },
   },
+  {
+    version: 6,
+    name: 'recommendation-batches',
+    up: async (conn) => {
+      // Section 15: RecommendationBatch index briefId+generatedAt (latest batch per brief);
+      // generatedAt alone for the 24-hour entry-retention sweep.
+      await ensureCollection(conn, 'recommendation_batches');
+      const db = conn.db;
+      if (!db) throw new Error('database not connected');
+      const batches = db.collection('recommendation_batches');
+      await batches.createIndex(
+        { briefId: 1, generatedAt: -1, _id: -1 },
+        { name: 'briefId_generatedAt' },
+      );
+      await batches.createIndex({ generatedAt: 1 }, { name: 'generatedAt' });
+    },
+  },
 ];
 
 export const LATEST_MIGRATION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);

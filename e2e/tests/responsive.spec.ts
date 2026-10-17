@@ -77,3 +77,24 @@ test('the brief editor and resume section fit a phone screen', async ({ page }) 
   ).toBeVisible();
   expect(await overflow()).toBe(0);
 });
+
+test('the candidates dashboard fits a phone screen', async ({ page }) => {
+  await page.goto('/sign-in');
+  await page.getByLabel('Email').fill(ACCOUNTS.founder);
+  await page.getByLabel('Password', { exact: false }).first().fill(E2E_PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Founder workspace' })).toBeVisible();
+  await page.goto('/founder/candidates');
+  await page.getByLabel('Brief').selectOption({ label: 'PayPilot payment reconciliation API' });
+  // Either a first search or a refresh of an earlier one: both run a new server search.
+  await page
+    .getByRole('button', { name: /^(Find candidates|Run a new search)$/ })
+    .first()
+    .click();
+  await expect(page.getByRole('region', { name: 'Recommended' })).toBeVisible();
+  await page.getByRole('button', { name: 'View details' }).first().click();
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBe(0);
+});

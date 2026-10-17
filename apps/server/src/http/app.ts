@@ -13,6 +13,7 @@ import type { ProfileService } from '../profiles/service.js';
 import type { BriefService } from '../briefs/service.js';
 import type { IdempotencyStore } from '../briefs/store.js';
 import type { ResumeService } from '../resumes/service.js';
+import type { RecommendationService } from '../recommendations/service.js';
 import { RESUME_UPLOAD_PATH } from './routes/resumes.js';
 import { apiNotFound, errorHandler } from './middleware/error-handler.js';
 import { createV1Router } from './routes/v1.js';
@@ -26,6 +27,9 @@ export interface AppDependencies {
   briefs: BriefService;
   idempotency: IdempotencyStore;
   resumes: ResumeService;
+  recommendations: RecommendationService;
+  /** Override the discovery search limiter (tests). */
+  searchLimiter?: express.RequestHandler;
   /** Override the resume upload limiter (tests use tiny limits). */
   resumeUploadLimiter?: express.RequestHandler;
   /** Override individual rate limiters (tests use tiny windows). */
@@ -94,6 +98,8 @@ export function createApp(deps: AppDependencies): Express {
       briefs: deps.briefs,
       idempotency: deps.idempotency,
       resumes: deps.resumes,
+      recommendations: deps.recommendations,
+      ...(deps.searchLimiter ? { searchLimiter: deps.searchLimiter } : {}),
       ...(deps.resumeUploadLimiter ? { resumeUploadLimiter: deps.resumeUploadLimiter } : {}),
       cookies,
       limiters,

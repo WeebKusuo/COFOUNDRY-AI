@@ -75,6 +75,30 @@ export class MemoryProfileStore implements ProfileStore {
         c.withdrawnAt === null,
     );
   }
+  async findCandidates(
+    userIds: readonly string[],
+    options: { discoverableOnly?: boolean; limit?: number } = {},
+  ) {
+    const ids = new Set(userIds);
+    const rows = [...this.candidates.values()]
+      .filter((r) => ids.has(r.userId) && (!options.discoverableOnly || r.discoveryEnabled))
+      .sort((a, b) => (a.userId < b.userId ? -1 : 1));
+    return structuredClone(options.limit === undefined ? rows : rows.slice(0, options.limit));
+  }
+  async activeSelfConsentUserIds(purpose: ConsentKey['purpose'], userIds: readonly string[]) {
+    const ids = new Set(userIds);
+    return new Set(
+      this.consents
+        .filter(
+          (c) =>
+            c.purpose === purpose &&
+            c.withdrawnAt === null &&
+            c.userId === c.targetId &&
+            ids.has(c.userId),
+        )
+        .map((c) => c.userId),
+    );
+  }
   async hasActiveConsent(key: ConsentKey) {
     return this.active(key).length > 0;
   }
