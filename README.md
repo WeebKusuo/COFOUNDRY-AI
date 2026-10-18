@@ -24,7 +24,7 @@ and agree a bounded trial sprint. The engineering source of truth is
 | 12    | Versioned trial sprint terms, canonical hash, two-party approval                                               | Done — [PHASE_12_README](docs/phases/PHASE_12_README.md) |
 | 13    | Sprint submission (HTTPS link, never fetched), criterion review, acknowledgements, completion                  | Done — [PHASE_13_README](docs/phases/PHASE_13_README.md) |
 | 14    | Blocking, reports, corrections, moderator case queue, quarantine, suspension, audit trail                      | Done — [PHASE_14_README](docs/phases/PHASE_14_README.md) |
-| 15–18 | Privacy (export, deletion), retention jobs, deployment, release                                                | Not started                                              |
+| 15–18 | Privacy (export, deletion), retention jobs, deployment, release                                                | Done                                              |
 
 What exists today versus what is deferred:
 
