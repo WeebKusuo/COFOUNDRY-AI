@@ -25,12 +25,12 @@ function StateFrame({
 }) {
   return (
     <div
-      className="flex flex-col items-start gap-3 rounded-xl border border-dashed border-line-strong bg-surface px-6 py-8"
+      className="flex flex-col items-start gap-3 rounded-sm border border-dashed border-line-strong bg-surface px-6 py-8"
       {...(role ? { role } : {})}
     >
-      <span className="rounded-lg bg-surface-sunk p-2.5 text-ink-muted">{icon}</span>
+      <span className="rounded-sm border border-line p-2 text-ink-muted">{icon}</span>
       <div>
-        <p className="text-lg font-semibold text-ink">{title}</p>
+        <p className="text-lg font-semibold tracking-[-0.01em] text-ink">{title}</p>
         {children ? <div className="mt-1 max-w-prose text-ink-muted">{children}</div> : null}
       </div>
       {action}
@@ -41,8 +41,10 @@ function StateFrame({
 export function LoadingState({ label = 'Loading' }: { label?: string }) {
   return (
     <div className="flex items-center gap-3 py-8 text-ink-muted">
-      <Spinner label={null} />
-      <span role="status">{label}…</span>
+      <Spinner label={null} size="sm" />
+      <span role="status" className="label-mono">
+        {label}…
+      </span>
     </div>
   );
 }

@@ -101,7 +101,7 @@ export function CandidateCard({
           <div className="flex min-w-0 flex-col gap-4">
             <header className="flex flex-wrap items-start gap-x-4 gap-y-3">
               <span
-                className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-soft text-sm font-bold text-brand-strong dark:text-brand"
+                className="grid size-9 shrink-0 place-items-center rounded-sm border border-ink font-mono text-sm font-medium text-ink"
                 aria-label={`Rank ${rank}`}
               >
                 {rank}

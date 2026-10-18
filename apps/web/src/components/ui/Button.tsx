@@ -7,21 +7,23 @@ import { Spinner } from './Spinner';
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
+// Square, flat controls with monospace uppercase labels (the label text itself is unchanged).
 const base =
-  'inline-flex items-center justify-center gap-2 rounded-lg font-semibold whitespace-nowrap ' +
-  'transition-colors disabled:cursor-not-allowed disabled:opacity-55 select-none';
+  'inline-flex items-center justify-center gap-2 rounded-sm border font-mono font-medium ' +
+  'uppercase tracking-[0.08em] whitespace-nowrap transition-colors select-none ' +
+  'disabled:cursor-not-allowed disabled:opacity-45';
 
 const variants: Record<ButtonVariant, string> = {
-  primary: 'bg-brand text-on-brand hover:bg-brand-strong',
-  secondary: 'border border-line-strong bg-surface text-ink hover:bg-surface-sunk',
-  ghost: 'text-ink hover:bg-surface-sunk',
-  danger: 'bg-danger text-white hover:opacity-90 dark:text-surface-sunk',
+  primary: 'border-brand bg-brand text-on-brand hover:border-brand-strong hover:bg-brand-strong',
+  secondary: 'border-line-strong bg-surface text-ink hover:border-ink hover:bg-surface-sunk',
+  ghost: 'border-transparent text-ink hover:bg-surface-sunk',
+  danger: 'border-danger bg-surface text-danger hover:bg-danger hover:text-on-brand',
 };
 
 const sizes: Record<ButtonSize, string> = {
-  sm: 'h-9 px-3 text-sm',
-  md: 'h-11 px-4 text-sm',
-  lg: 'h-12 px-5 text-base',
+  sm: 'h-9 px-3 text-[0.6875rem]',
+  md: 'h-11 px-4 text-xs',
+  lg: 'h-12 px-6 text-xs',
 };
 
 export function buttonClasses(

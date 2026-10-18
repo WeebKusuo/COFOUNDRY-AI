@@ -28,7 +28,7 @@ export function ExternalLink({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded text-sm font-medium text-brand hover:underline"
+        className="inline-flex items-center gap-1.5 rounded-sm text-sm font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink"
         aria-expanded={false}
       >
         <ExternalIcon className="size-3.5" aria-hidden="true" />
@@ -40,7 +40,7 @@ export function ExternalLink({
     <div
       role="group"
       aria-label="External link notice"
-      className="rounded-lg border border-line bg-surface-sunk p-3 text-sm"
+      className="rounded-sm border border-line bg-surface-sunk p-3 text-sm"
     >
       <p className="text-ink">
         You’re leaving CoFoundry to visit <strong className="font-semibold">{host}</strong>. This is
@@ -51,7 +51,7 @@ export function ExternalLink({
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="font-semibold text-brand hover:underline"
+          className="font-semibold text-ink underline underline-offset-4"
         >
           Open {host}
         </a>

@@ -77,34 +77,34 @@ export function SignInPage() {
       <SkipLink />
       <aside
         aria-label="About CoFoundry accounts"
-        className="relative hidden flex-col justify-between overflow-hidden bg-[#0a3d35] p-12 text-white lg:flex"
+        className="relative hidden flex-col justify-between overflow-hidden border-r border-line bg-[#1c1b18] p-12 text-[#f3f1ec] lg:flex"
       >
         <span
           aria-hidden="true"
-          className="absolute -right-16 top-24 h-64 w-40 rounded-3xl bg-signal/90"
+          className="absolute top-24 -right-10 h-40 w-24 rounded-sm bg-signal"
         />
         <span
           aria-hidden="true"
-          className="absolute -right-40 top-24 h-64 w-40 rounded-3xl bg-white/10"
+          className="absolute top-24 -right-36 h-40 w-24 rounded-sm border border-white/20"
         />
         <span aria-hidden="true" />
         <div className="relative max-w-md">
-          <h2 className="text-3xl leading-tight font-bold">
+          <h2 className="text-3xl leading-tight font-semibold tracking-[-0.03em]">
             The missing piece is a person. Meet them on clear terms.
           </h2>
-          <ul className="mt-8 space-y-4 text-white/85">
+          <ul className="mt-8 space-y-4 border-t border-white/15 pt-6 text-white/80">
             <li>Every match score shows the factors behind it.</li>
             <li>Interview reports show the original answers to both people.</li>
             <li>Trial sprints are capped at 10 hours and need both approvals.</li>
           </ul>
         </div>
-        <p className="relative text-sm text-white/70">
+        <p className="relative font-mono text-xs text-white/60">
           Your session ends after 30 minutes without activity, and after 8 hours at most.
         </p>
       </aside>
 
       <div className="flex flex-col">
-        <header className="flex h-16 items-center justify-between px-4 sm:px-8">
+        <header className="flex h-14 items-center justify-between border-b border-line px-4 sm:px-8">
           <Logo />
           <ThemeToggle />
         </header>
@@ -153,7 +153,7 @@ export function SignInPage() {
                 />
                 <button
                   type="button"
-                  className="self-start rounded text-sm font-medium text-brand hover:underline"
+                  className="self-start rounded-sm text-sm font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink"
                   aria-pressed={showPassword}
                   onClick={() => setShowPassword((v) => !v)}
                 >

@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
 import { Download, FileText, ShieldCheck, Trash2, Upload } from 'lucide-react';
 import {
   RESUME_LIMITS,
@@ -9,6 +9,7 @@ import {
 } from '@cofoundry/shared';
 import { ApiError } from '../../lib/api/client';
 import {
+  buttonClasses,
   Alert,
   Badge,
   Button,
@@ -30,7 +31,7 @@ export function ResumeSection({
   description = 'A private PDF used only to prepare interview questions about your projects and experience. AI interviews need one.',
   onChanged,
 }: {
-  title?: string;
+  title?: ReactNode;
   description?: string;
   /** Called after a successful upload, replacement or deletion. */
   onChanged?: () => void;
@@ -167,7 +168,7 @@ function ResumeManager({
               type="file"
               accept="application/pdf,.pdf"
               aria-describedby={`${inputId}-hint`}
-              className="block w-full max-w-md text-sm text-ink file:mr-3 file:rounded-md file:border file:border-line-strong file:bg-surface file:px-3 file:py-2 file:text-sm file:font-medium file:text-ink hover:file:bg-surface-sunk"
+              className="block w-full max-w-md text-sm text-ink file:mr-3 file:rounded-sm file:border file:border-line-strong file:bg-surface file:px-3 file:py-2 file:font-mono file:text-[0.6875rem] file:font-medium file:tracking-[0.08em] file:text-ink file:uppercase hover:file:bg-surface-sunk"
               onChange={(e) => {
                 setFile(e.target.files?.[0] ?? null);
                 setError(null);
@@ -198,11 +199,7 @@ function ResumeManager({
 
       {resume && !replacing ? (
         <div className="flex flex-wrap gap-2">
-          <a
-            href={RESUME_FILE_URL}
-            download
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-line-strong bg-surface px-3 text-sm font-semibold text-ink hover:bg-surface-sunk"
-          >
+          <a href={RESUME_FILE_URL} download className={buttonClasses('secondary', 'sm')}>
             <Download className="size-4" aria-hidden="true" /> Download
           </a>
           <Button

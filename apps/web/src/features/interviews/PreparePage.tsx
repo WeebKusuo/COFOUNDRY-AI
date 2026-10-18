@@ -6,6 +6,7 @@ import {
   Camera,
   CheckCircle2,
   Code2,
+  FileText,
   ListChecks,
   Mic,
   RefreshCw,
@@ -66,10 +67,10 @@ function StepTitle({ n, icon, children }: { n: number; icon: React.ReactNode; ch
   return (
     <span className="flex items-center gap-2">
       <span
-        className="flex size-6 items-center justify-center rounded-full bg-brand-soft text-xs font-bold text-brand-strong"
+        className="font-mono text-[0.6875rem] font-medium tracking-[0.08em] text-ink-muted"
         aria-hidden="true"
       >
-        {n}
+        {String(n).padStart(2, '0')}
       </span>
       {icon}
       {children}
@@ -281,7 +282,14 @@ function Body({ view }: { view: InterviewSessionView }) {
 
       {view.status === 'accepted' ? (
         <ResumeSection
-          title="1. Your resume"
+          title={
+            <StepTitle
+              n={1}
+              icon={<FileText className="size-4 text-ink-muted" aria-hidden="true" />}
+            >
+              Your resume
+            </StepTitle>
+          }
           description="Required. The interview questions are prepared from the projects and technologies in it. Contact details are removed before AI processing."
           onChanged={() => void qc.invalidateQueries({ queryKey: interviewKeys.one(view.id) })}
         />
@@ -298,7 +306,7 @@ function Body({ view }: { view: InterviewSessionView }) {
             <span id="questions-heading">
               <StepTitle
                 n={2}
-                icon={<ListChecks className="size-5 text-brand" aria-hidden="true" />}
+                icon={<ListChecks className="size-4 text-ink-muted" aria-hidden="true" />}
               >
                 Interview questions
               </StepTitle>
@@ -323,7 +331,10 @@ function Body({ view }: { view: InterviewSessionView }) {
           <CardHeader
             title={
               <span id="camera-heading">
-                <StepTitle n={3} icon={<Camera className="size-5 text-brand" aria-hidden="true" />}>
+                <StepTitle
+                  n={3}
+                  icon={<Camera className="size-4 text-ink-muted" aria-hidden="true" />}
+                >
                   Camera
                 </StepTitle>
               </span>
@@ -338,7 +349,10 @@ function Body({ view }: { view: InterviewSessionView }) {
             <CardHeader
               title={
                 <span id="mic-heading">
-                  <StepTitle n={4} icon={<Mic className="size-5 text-brand" aria-hidden="true" />}>
+                  <StepTitle
+                    n={4}
+                    icon={<Mic className="size-4 text-ink-muted" aria-hidden="true" />}
+                  >
                     Microphone
                   </StepTitle>
                 </span>
@@ -387,7 +401,7 @@ function Body({ view }: { view: InterviewSessionView }) {
                 <span id="voice-heading">
                   <StepTitle
                     n={5}
-                    icon={<Volume2 className="size-5 text-brand" aria-hidden="true" />}
+                    icon={<Volume2 className="size-4 text-ink-muted" aria-hidden="true" />}
                   >
                     AI voice
                   </StepTitle>
@@ -430,7 +444,7 @@ function Body({ view }: { view: InterviewSessionView }) {
         <CardHeader
           title={
             <span id="code-heading" className="flex items-center gap-2">
-              <Code2 className="size-5 text-brand" aria-hidden="true" />
+              <Code2 className="size-4 text-ink-muted" aria-hidden="true" />
               Coding task
             </span>
           }
@@ -457,7 +471,7 @@ function Body({ view }: { view: InterviewSessionView }) {
         <CardHeader
           title={
             <span id="privacy-heading" className="flex items-center gap-2">
-              <ShieldCheck className="size-5 text-brand" aria-hidden="true" />
+              <ShieldCheck className="size-4 text-ink-muted" aria-hidden="true" />
               Privacy and retention
             </span>
           }

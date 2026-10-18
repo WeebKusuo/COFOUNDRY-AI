@@ -4,11 +4,12 @@ import { cn } from '../../lib/cn';
 
 export type AlertTone = 'info' | 'success' | 'caution' | 'danger';
 
-const styles: Record<AlertTone, { box: string; Icon: typeof Info }> = {
-  info: { box: 'border-info/30 bg-info-soft text-ink', Icon: Info },
-  success: { box: 'border-success/30 bg-success-soft text-ink', Icon: CheckCircle2 },
-  caution: { box: 'border-caution/30 bg-caution-soft text-ink', Icon: AlertTriangle },
-  danger: { box: 'border-danger/30 bg-danger-soft text-ink', Icon: XCircle },
+// Flat panel with a coloured left rule; the icon and title carry the tone, not a filled box.
+const styles: Record<AlertTone, { box: string; icon: string; Icon: typeof Info }> = {
+  info: { box: 'border-l-info', icon: 'text-info', Icon: Info },
+  success: { box: 'border-l-success', icon: 'text-success', Icon: CheckCircle2 },
+  caution: { box: 'border-l-caution', icon: 'text-caution', Icon: AlertTriangle },
+  danger: { box: 'border-l-danger', icon: 'text-danger', Icon: XCircle },
 };
 
 /**
@@ -30,13 +31,17 @@ export function Alert({
   action?: ReactNode;
   className?: string;
 }) {
-  const { box, Icon } = styles[tone];
+  const { box, icon, Icon } = styles[tone];
   return (
     <div
-      className={cn('flex gap-3 rounded-lg border p-4', box, className)}
+      className={cn(
+        'flex gap-3 rounded-sm border border-l-2 border-line bg-surface p-4 text-ink',
+        box,
+        className,
+      )}
       {...(live ? { role: 'alert' } : {})}
     >
-      <Icon className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
+      <Icon className={cn('mt-0.5 size-4 shrink-0', icon)} aria-hidden="true" />
       <div className="min-w-0 flex-1">
         <p className="font-semibold">{title}</p>
         {children ? <div className="mt-1 text-sm text-ink-muted">{children}</div> : null}

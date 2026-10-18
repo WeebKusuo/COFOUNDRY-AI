@@ -11,60 +11,65 @@
 
 :root {
   color-scheme: light;
-  --c-canvas: #f6f7f9;
-  --c-surface: #ffffff;
-  --c-surface-sunk: #eef1f4;
-  --c-line: #d9dee5;
-  --c-line-strong: #b9c1cc;
-  --c-ink: #14213d;
-  --c-ink-muted: #4a5568;
-  --c-ink-faint: #5f6a7a;
-  --c-brand: #0e6b5c;
-  --c-brand-strong: #0a5246;
-  --c-brand-soft: #e3f2ee;
-  --c-on-brand: #ffffff;
-  --c-signal: #f2b84b;
-  --c-caution: #8a5a00;
-  --c-caution-soft: #fdf3dc;
-  --c-danger: #b42318;
-  --c-danger-soft: #fdecea;
-  --c-success: #0e6b5c;
-  --c-success-soft: #e3f2ee;
-  --c-info: #1f4f8f;
-  --c-info-soft: #e7eef8;
-  --c-focus: #1f4f8f;
-  --shadow-raised: 0 1px 2px rgb(20 33 61 / 0.06), 0 4px 16px -4px rgb(20 33 61 / 0.08);
+  /* Paper and ink: warm off-white canvas, near-white panels, hairline rules, charcoal ink. */
+  --c-canvas: #f3f1ec;
+  --c-surface: #fcfbf9;
+  --c-surface-sunk: #ebe8e1;
+  --c-line: #dcd8cf;
+  --c-line-strong: #948f85;
+  --c-ink: #1c1b18;
+  --c-ink-muted: #5d5a53;
+  --c-ink-faint: #67635b;
+  /* The primary accent is the ink itself; colour is reserved for status. */
+  --c-brand: #1c1b18;
+  --c-brand-strong: #000000;
+  --c-brand-soft: #e6e3dc;
+  --c-on-brand: #fcfbf9;
+  --c-signal: #d9581f;
+  --c-caution: #8a5300;
+  --c-caution-soft: #f5ecda;
+  --c-danger: #b0301c;
+  --c-danger-soft: #f7e6e1;
+  --c-success: #2d6a4a;
+  --c-success-soft: #e4eee7;
+  --c-info: #2c46c4;
+  --c-info-soft: #e8eaf7;
+  --c-focus: #2c46c4;
+  --shadow-raised: none;
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --c-canvas: #0f1a1f;
-  --c-surface: #15242a;
-  --c-surface-sunk: #0b1418;
-  --c-line: #26383f;
-  --c-line-strong: #3a5059;
-  --c-ink: #e6eef0;
-  --c-ink-muted: #a9b8bd;
-  --c-ink-faint: #8a9ba1;
-  --c-brand: #4fc3a8;
-  --c-brand-strong: #7dd8c2;
-  --c-brand-soft: #173a35;
-  --c-on-brand: #062a23;
-  --c-signal: #f2b84b;
-  --c-caution: #f2c76e;
-  --c-caution-soft: #3a2f16;
-  --c-danger: #ff8a7a;
-  --c-danger-soft: #3d1c19;
-  --c-success: #4fc3a8;
-  --c-success-soft: #173a35;
-  --c-info: #8fb5ec;
-  --c-info-soft: #18293f;
-  --c-focus: #8fb5ec;
-  --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -8px rgb(0 0 0 / 0.5);
+  --c-canvas: #121211;
+  --c-surface: #1a1a18;
+  --c-surface-sunk: #0c0c0b;
+  --c-line: #2e2d29;
+  --c-line-strong: #66635c;
+  --c-ink: #ecebe6;
+  --c-ink-muted: #aaa79f;
+  --c-ink-faint: #97948b;
+  --c-brand: #ecebe6;
+  --c-brand-strong: #ffffff;
+  --c-brand-soft: #262521;
+  --c-on-brand: #121211;
+  --c-signal: #f2834c;
+  --c-caution: #e3b25e;
+  --c-caution-soft: #2b2416;
+  --c-danger: #f08b78;
+  --c-danger-soft: #331b16;
+  --c-success: #86c7a0;
+  --c-success-soft: #18261d;
+  --c-info: #9aabf2;
+  --c-info-soft: #1b1f33;
+  --c-focus: #9aabf2;
+  --shadow-raised: none;
 }
 
 @theme inline {
   --font-sans: 'Schibsted Grotesk Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    ui-monospace, 'SFMono-Regular', 'SF Mono', 'JetBrains Mono', Menlo, Consolas, 'Liberation Mono',
+    monospace;
 
   --color-canvas: var(--c-canvas);
   --color-surface: var(--c-surface);
@@ -90,15 +95,26 @@
   --color-focus: var(--c-focus);
   --shadow-raised: var(--shadow-raised);
 
-  /* Type scale (1.25 modular, 17px body) */
-  --text-xs: 0.8125rem;
-  --text-sm: 0.9375rem;
-  --text-base: 1.0625rem;
-  --text-lg: 1.25rem;
-  --text-xl: 1.5625rem;
-  --text-2xl: 1.953rem;
-  --text-3xl: 2.441rem;
-  --text-4xl: clamp(2.4rem, 1.6rem + 3.6vw, 4.25rem);
+  /* Type scale: compact editorial text (16px body), large tight display sizes. */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
+  --text-4xl: clamp(2.4rem, 1.6rem + 3.6vw, 4rem);
+}
+
+/* Near-square corners everywhere; rounded-full stays for dots, meters and the voice orb. */
+@theme {
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 3px;
+  --radius-2xl: 3px;
+  --radius-3xl: 4px;
 }
 
 @layer base {
@@ -116,9 +132,9 @@
     line-height: 1.55;
   }
   :focus-visible {
-    outline: 3px solid var(--c-focus);
+    outline: 2px solid var(--c-focus);
     outline-offset: 2px;
-    border-radius: 4px;
+    border-radius: 2px;
   }
   ::selection {
     background: var(--c-brand-soft);
@@ -128,7 +144,22 @@
   h2,
   h3 {
     text-wrap: balance;
-    letter-spacing: -0.015em;
+    letter-spacing: -0.02em;
+  }
+  h1 {
+    letter-spacing: -0.03em;
+  }
+  /* Table headers read as small monospace captions, like section labels. */
+  thead th {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--c-ink-muted);
+  }
+  hr {
+    border-color: var(--c-line);
   }
   p {
     text-wrap: pretty;
@@ -138,6 +169,15 @@
 @layer utilities {
   .tabular {
     font-variant-numeric: tabular-nums;
+  }
+  /* Small monospace caption: section labels, field labels, badges, buttons, meta text. */
+  .label-mono {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    line-height: 1.4;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 }
 

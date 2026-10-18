@@ -36,17 +36,17 @@ function SideNav({
                 onClick={onNavigate}
                 className={({ isActive }) =>
                   cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                    'flex items-center gap-3 rounded-sm border-l-2 px-3 py-2 text-sm transition-colors',
                     isActive
-                      ? 'bg-brand-soft text-ink'
-                      : 'text-ink-muted hover:bg-surface-sunk hover:text-ink',
+                      ? 'border-ink bg-surface font-semibold text-ink'
+                      : 'border-transparent text-ink-muted hover:bg-surface hover:text-ink',
                   )
                 }
               >
                 {({ isActive }) => (
                   <>
                     <Icon
-                      className={cn('size-4', isActive ? 'text-brand' : 'text-ink-faint')}
+                      className={cn('size-4', isActive ? 'text-ink' : 'text-ink-faint')}
                       aria-hidden="true"
                     />
                     {item.label}
@@ -59,14 +59,14 @@ function SideNav({
       </ul>
       {otherRoles.length > 0 ? (
         <div className="border-t border-line pt-4">
-          <p className="px-3 text-xs font-semibold text-ink-faint">Your other workspaces</p>
+          <p className="label-mono px-3 text-ink-faint">Your other workspaces</p>
           <ul className="mt-1.5 flex flex-col gap-0.5">
             {otherRoles.map((role) => (
               <li key={role}>
                 <NavLink
                   to={WORKSPACES[role].basePath}
                   onClick={onNavigate}
-                  className="block rounded-lg px-3 py-1.5 text-sm text-ink-muted hover:bg-surface-sunk hover:text-ink"
+                  className="block rounded-sm px-3 py-1.5 text-sm text-ink-muted hover:bg-surface hover:text-ink"
                 >
                   {ROLE_LABEL[role]}
                 </NavLink>
@@ -139,11 +139,11 @@ export function AppShell({ role }: { role: keyof typeof WORKSPACES }) {
   return (
     <div className="min-h-dvh bg-canvas">
       <SkipLink />
-      <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
-        <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
+      <header className="sticky top-0 z-30 border-b border-line bg-canvas/95 backdrop-blur">
+        <div className="flex h-14 items-center gap-3 px-4 sm:px-6">
           <button
             type="button"
-            className="inline-flex size-10 items-center justify-center rounded-lg text-ink hover:bg-surface-sunk lg:hidden"
+            className="inline-flex size-10 items-center justify-center rounded-sm text-ink hover:bg-surface-sunk lg:hidden"
             aria-expanded={menuOpen}
             aria-controls={menuId}
             aria-label={menuOpen ? 'Close navigation' : 'Open navigation'}
@@ -156,7 +156,7 @@ export function AppShell({ role }: { role: keyof typeof WORKSPACES }) {
             )}
           </button>
           <Logo />
-          <span className="hidden rounded-md border border-line px-2 py-0.5 text-xs font-semibold text-ink-muted sm:inline">
+          <span className="label-mono hidden border-l border-line pl-3 text-ink-muted sm:inline">
             {ROLE_LABEL[role]}
           </span>
           <div className="ml-auto flex items-center gap-3">
@@ -164,7 +164,7 @@ export function AppShell({ role }: { role: keyof typeof WORKSPACES }) {
             <ThemeToggle className="max-sm:hidden" />
             <span className="hidden text-right leading-tight md:block">
               <span className="block text-sm font-semibold text-ink">{user.displayName}</span>
-              <span className="block text-xs text-ink-muted">{user.email}</span>
+              <span className="block font-mono text-[0.6875rem] text-ink-muted">{user.email}</span>
             </span>
             <span className="max-sm:hidden">
               <SignOutButton />
@@ -172,7 +172,7 @@ export function AppShell({ role }: { role: keyof typeof WORKSPACES }) {
           </div>
         </div>
         {user.accountMode === 'demo' ? (
-          <div className="flex flex-wrap items-center gap-2 border-t border-line bg-caution-soft px-4 py-2 text-sm text-ink sm:px-6">
+          <div className="flex flex-wrap items-center gap-2 border-t border-line bg-caution-soft px-4 py-1.5 text-xs text-ink sm:px-6">
             <Badge tone="caution">Demo account</Badge>
             <span>This is a shared, seeded identity. Don’t enter real personal information.</span>
           </div>
@@ -180,13 +180,15 @@ export function AppShell({ role }: { role: keyof typeof WORKSPACES }) {
         {menuOpen ? (
           <div
             id={menuId}
-            className="max-h-[70dvh] overflow-y-auto border-t border-line bg-surface px-3 py-4 lg:hidden"
+            className="max-h-[70dvh] overflow-y-auto border-t border-line bg-canvas px-3 py-4 lg:hidden"
           >
             <SideNav def={def} user={user} onNavigate={() => setMenuOpen(false)} />
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line px-3 pt-4 sm:hidden">
               <span className="text-sm">
                 <span className="block font-semibold text-ink">{user.displayName}</span>
-                <span className="block text-xs text-ink-muted">{user.email}</span>
+                <span className="block font-mono text-[0.6875rem] text-ink-muted">
+                  {user.email}
+                </span>
               </span>
               <ThemeToggle />
               <SignOutButton compact />
@@ -196,7 +198,7 @@ export function AppShell({ role }: { role: keyof typeof WORKSPACES }) {
       </header>
 
       <div className="mx-auto flex max-w-[1400px]">
-        <aside className="sticky top-28 hidden h-[calc(100dvh-7rem)] w-64 shrink-0 overflow-y-auto border-r border-line px-3 py-6 lg:block">
+        <aside className="sticky top-24 hidden h-[calc(100dvh-6rem)] w-60 shrink-0 overflow-y-auto border-r border-line px-3 py-6 lg:block">
           <SideNav def={def} user={user} />
         </aside>
 

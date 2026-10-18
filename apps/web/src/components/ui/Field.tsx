@@ -13,8 +13,9 @@ import { cn } from '../../lib/cn';
  */
 
 const control =
-  'w-full rounded-lg border bg-surface px-3 text-base text-ink placeholder:text-ink-faint ' +
-  'focus-visible:border-focus disabled:bg-surface-sunk disabled:text-ink-faint';
+  'w-full rounded-sm border bg-surface px-3 text-base text-ink placeholder:text-ink-faint ' +
+  'transition-colors hover:border-ink-muted focus-visible:border-ink ' +
+  'disabled:bg-surface-sunk disabled:text-ink-faint';
 
 /** Border colour by state — set exclusively so classes never compete. */
 const borderFor = (error: unknown) => (error ? 'border-danger' : 'border-line-strong');
@@ -39,11 +40,13 @@ function FieldShell({ id, label, hint, error, required, counter, children }: Fie
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between gap-3">
-        <label htmlFor={id} className="text-sm font-semibold text-ink">
+        <label htmlFor={id} className="label-mono text-ink-muted">
           {label}
-          {required ? <span className="ml-1 font-normal text-ink-muted">(required)</span> : null}
+          {required ? <span className="ml-1 text-ink-faint">(required)</span> : null}
         </label>
-        {counter ? <span className="tabular text-xs text-ink-muted">{counter}</span> : null}
+        {counter ? (
+          <span className="tabular font-mono text-[0.6875rem] text-ink-faint">{counter}</span>
+        ) : null}
       </div>
       {children}
       {hint ? (
@@ -183,13 +186,13 @@ export function CheckboxField({
       <input
         id={id}
         type="checkbox"
-        className="mt-1 size-5 shrink-0 accent-brand"
+        className="mt-0.5 size-4 shrink-0 accent-brand"
         aria-invalid={err ? true : undefined}
         aria-describedby={describedBy(id, hint, error)}
         {...rest}
       />
       <div>
-        <label htmlFor={id} className="font-medium text-ink">
+        <label htmlFor={id} className="text-ink">
           {label}
         </label>
         {hint ? (

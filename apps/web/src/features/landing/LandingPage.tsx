@@ -48,7 +48,7 @@ export function LandingPage() {
     <>
       <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 pt-14 pb-20 sm:px-6 lg:grid-cols-[1.05fr_1fr] lg:gap-16 lg:pt-20">
         <div>
-          <h1 className="max-w-[14ch] text-4xl leading-[1.04] font-bold text-ink">
+          <h1 className="max-w-[14ch] text-4xl leading-[1.02] font-semibold text-ink">
             Find the people your startup is missing.
           </h1>
           <p className="mt-5 text-xl font-medium text-ink">Test the fit. Build together.</p>
@@ -88,7 +88,7 @@ export function LandingPage() {
                   className="absolute top-3 right-0 left-9 hidden h-px bg-line-strong md:block"
                 />
                 <div className="flex items-center gap-3 md:absolute md:top-0 md:left-0">
-                  <span className="tabular flex size-7 items-center justify-center rounded-full bg-ink text-sm font-bold text-canvas">
+                  <span className="tabular flex size-7 items-center justify-center rounded-sm border border-ink font-mono text-xs font-medium text-ink">
                     {i + 1}
                   </span>
                   <span className="text-xs font-medium text-ink-muted md:hidden">{step.who}</span>

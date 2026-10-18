@@ -107,7 +107,7 @@ export function CodeEditor({
       {mode === 'monaco' ? (
         <button
           type="button"
-          className="self-start text-sm text-brand underline"
+          className="self-start text-sm text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink"
           onClick={() => {
             editor.current?.dispose();
             editor.current = null;

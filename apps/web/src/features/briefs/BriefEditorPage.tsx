@@ -100,7 +100,10 @@ export function BriefEditorPage() {
           icon={<XCircle className="size-5" aria-hidden="true" />}
           title="Brief not found"
           action={
-            <Link to="/founder/briefs" className="font-medium text-brand hover:underline">
+            <Link
+              to="/founder/briefs"
+              className="font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink"
+            >
               Back to your briefs
             </Link>
           }
@@ -588,7 +591,7 @@ function DraftEditor({
             {COMPENSATION_TYPES.map((type) => (
               <label
                 key={type}
-                className="flex cursor-pointer items-center gap-3 rounded-lg border border-line-strong px-4 py-3 text-sm font-medium text-ink has-checked:border-brand has-checked:bg-brand-soft has-focus-visible:ring-2 has-focus-visible:ring-brand"
+                className="flex cursor-pointer items-center gap-3 rounded-lg border border-line-strong px-4 py-3 text-sm font-medium text-ink has-checked:border-ink has-checked:bg-brand-soft has-focus-visible:ring-2 has-focus-visible:ring-focus"
               >
                 <input
                   type="radio"
@@ -817,7 +820,7 @@ function PublishedBrief({
             {b.clonedFromId ? (
               <Link
                 to={`/founder/briefs/${b.clonedFromId}`}
-                className="text-sm text-brand hover:underline"
+                className="text-sm text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink"
               >
                 Cloned from an earlier brief
               </Link>

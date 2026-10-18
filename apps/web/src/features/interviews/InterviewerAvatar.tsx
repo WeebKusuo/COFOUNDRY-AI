@@ -45,7 +45,7 @@ export function InterviewerAvatar({
         <div
           aria-hidden="true"
           className={cn(
-            'absolute inset-4 rounded-full bg-brand/15 transition-transform duration-100 motion-reduce:transition-none',
+            'absolute inset-4 rounded-full border border-line-strong bg-brand-soft/60 transition-transform duration-100 motion-reduce:transition-none',
             activity === 'thinking' && 'animate-pulse',
           )}
           style={{
@@ -55,13 +55,14 @@ export function InterviewerAvatar({
         <div
           aria-hidden="true"
           className={cn(
-            'absolute inset-10 rounded-full bg-gradient-to-br from-brand to-brand-strong shadow-raised',
-            activity === 'thinking' && 'motion-safe:animate-spin [animation-duration:3s]',
+            'absolute inset-10 rounded-full border-2 border-ink bg-surface',
+            activity === 'thinking' &&
+              'border-dashed motion-safe:animate-spin [animation-duration:3s]',
           )}
         />
-        <div aria-hidden="true" className="absolute inset-[4.5rem] rounded-full bg-surface/80" />
+        <div aria-hidden="true" className="absolute inset-[4.5rem] rounded-full bg-ink" />
       </div>
-      <p className="text-sm font-medium text-ink" role="status">
+      <p className="label-mono text-ink-muted" role="status">
         {LABELS[activity]}
       </p>
     </div>

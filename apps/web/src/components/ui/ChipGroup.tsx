@@ -43,10 +43,10 @@ export function ChipGroup<T extends string>({
       aria-describedby={describedBy || undefined}
       aria-invalid={error ? true : undefined}
     >
-      <legend className="mb-1 flex w-full items-baseline justify-between gap-3 text-sm font-semibold text-ink">
+      <legend className="label-mono mb-1 flex w-full items-baseline justify-between gap-3 text-ink-muted">
         <span>{legend}</span>
         {max !== undefined ? (
-          <span className="tabular text-xs font-normal text-ink-muted">
+          <span className="tabular text-ink-faint">
             {value.length}/{max}
           </span>
         ) : null}
@@ -59,11 +59,11 @@ export function ChipGroup<T extends string>({
             <label
               key={option.value}
               className={cn(
-                'relative inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors',
+                'relative inline-flex cursor-pointer items-center gap-1.5 rounded-sm border px-3 py-1.5 text-sm transition-colors',
                 'has-[:focus-visible]:outline has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-focus',
                 checked
-                  ? 'border-brand bg-brand-soft font-semibold text-ink'
-                  : 'border-line-strong bg-surface text-ink-muted hover:text-ink',
+                  ? 'border-ink bg-brand-soft font-semibold text-ink'
+                  : 'border-line bg-surface text-ink-muted hover:border-line-strong hover:text-ink',
                 disabled && 'cursor-not-allowed opacity-50',
               )}
             >
@@ -82,7 +82,7 @@ export function ChipGroup<T extends string>({
                   )
                 }
               />
-              {checked ? <Check className="size-3.5 text-brand" aria-hidden="true" /> : null}
+              {checked ? <Check className="size-3.5 text-ink" aria-hidden="true" /> : null}
               {option.label}
             </label>
           );

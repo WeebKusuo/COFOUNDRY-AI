@@ -28,9 +28,11 @@ import { useReport, useRetryEvaluation } from './api';
 
 function ScoreTile({ label, score, note }: { label: string; score: number | null; note?: string }) {
   return (
-    <div className="rounded-lg border border-line bg-surface-sunk p-4">
-      <p className="text-sm text-ink-muted">{label}</p>
-      <p className="mt-1 text-2xl font-bold tabular-nums text-ink">{formatScore(score)}</p>
+    <div className="rounded-sm border border-line bg-surface p-4">
+      <p className="label-mono text-ink-muted">{label}</p>
+      <p className="mt-2 text-3xl font-semibold tracking-[-0.03em] tabular-nums text-ink">
+        {formatScore(score)}
+      </p>
       {note ? <p className="mt-1 text-xs text-ink-muted">{note}</p> : null}
     </div>
   );
@@ -348,7 +350,7 @@ export function ReportView({ report: r }: { report: InterviewReportView }) {
       </div>
 
       <section aria-labelledby="questions-heading" className="flex flex-col gap-3">
-        <h2 id="questions-heading" className="text-lg font-semibold text-ink">
+        <h2 id="questions-heading" className="label-mono border-b border-line pb-2 text-ink">
           Question-by-question evaluation
         </h2>
         <ol className="flex flex-col gap-3">

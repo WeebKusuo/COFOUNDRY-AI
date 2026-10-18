@@ -24,13 +24,15 @@ export function WorkspaceHome({ role }: { role: UserRole }) {
       <PageHeader title={def.title} description={def.summary} />
       {role !== 'moderator' ? <ProfileStatus role={role} /> : null}
       {role === 'founder' ? <BriefStatus /> : null}
-      <h2 className="mb-3 text-lg font-semibold text-ink">Areas in this workspace</h2>
+      <h2 className="label-mono mb-4 border-b border-line pb-2 text-ink">
+        Areas in this workspace
+      </h2>
       <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {areas.map((item) => {
           const Icon = item.icon;
           return (
             <Card as="li" key={item.path} className="relative flex flex-col gap-2 shadow-none">
-              <Icon className="size-5 text-brand" aria-hidden="true" />
+              <Icon className="size-4 text-ink-muted" aria-hidden="true" />
               <h3 className="font-semibold text-ink">
                 <Link
                   to={workspaceHref(def, item)}

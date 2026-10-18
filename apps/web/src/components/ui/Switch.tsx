@@ -38,14 +38,14 @@ export function Switch({
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className={cn(
-          'inline-flex h-8 shrink-0 items-center gap-2 rounded-full border text-xs font-semibold transition-colors',
+          'label-mono inline-flex h-8 shrink-0 items-center gap-2 rounded-sm border transition-colors',
           'disabled:cursor-not-allowed disabled:opacity-55',
           checked
             ? 'flex-row-reverse border-brand bg-brand pr-1 pl-3 text-on-brand'
             : 'border-line-strong bg-surface-sunk pr-3 pl-1 text-ink-muted',
         )}
       >
-        <span aria-hidden="true" className="size-6 rounded-full bg-surface shadow-raised" />
+        <span aria-hidden="true" className="size-6 rounded-sm border border-line bg-surface" />
         {checked ? 'On' : 'Off'}
       </button>
     </div>

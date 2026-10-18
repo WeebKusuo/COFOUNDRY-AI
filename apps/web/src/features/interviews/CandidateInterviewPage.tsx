@@ -212,7 +212,7 @@ function Body({ view }: { view: InterviewSessionView }) {
         <Card as="section" className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="flex items-center gap-2 text-lg font-semibold text-ink">
-              <Mic className="size-5 text-brand" aria-hidden="true" />
+              <Mic className="size-5 text-ink" aria-hidden="true" />
               {view.status === 'accepted' ? 'Ready when you are' : 'Your interview is in progress'}
             </h2>
             <p className="text-sm text-ink-muted">
@@ -257,7 +257,7 @@ function Body({ view }: { view: InterviewSessionView }) {
           <CardHeader
             title={
               <span className="flex items-center gap-2">
-                <ShieldCheck className="size-5 text-brand" aria-hidden="true" /> Your consent
+                <ShieldCheck className="size-4 text-ink-muted" aria-hidden="true" /> Your consent
               </span>
             }
             description={

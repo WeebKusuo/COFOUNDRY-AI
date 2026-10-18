@@ -71,7 +71,7 @@ function Transcript({ turns }: { turns: TurnView[] }) {
         {turns.map((t) => (
           <li key={t.index} className="flex flex-col gap-1">
             <p className="text-sm">
-              <span className="font-semibold text-brand">Interviewer: </span>
+              <span className="font-semibold text-ink">Interviewer: </span>
               <span className="text-ink">{t.prompt}</span>
             </p>
             {t.answer ? (

@@ -38,7 +38,7 @@ export function InviteAction({
         Invitation sent to {displayName}.
         <Link
           to={`/founder/interviews/${invite.data.id}`}
-          className="font-medium text-brand underline"
+          className="font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink"
         >
           View
         </Link>
@@ -51,7 +51,7 @@ export function InviteAction({
         <InterviewStatusBadge status={existing.status} />
         <Link
           to={`/founder/interviews/${existing.id}`}
-          className="font-medium text-brand underline"
+          className="font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink"
         >
           Open interview
         </Link>

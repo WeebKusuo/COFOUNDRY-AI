@@ -55,7 +55,10 @@ export function RecommendationsPage() {
           icon={<FileText className="size-5" aria-hidden="true" />}
           title="No open brief to match"
           action={
-            <Link to="/founder/briefs" className="font-medium text-brand hover:underline">
+            <Link
+              to="/founder/briefs"
+              className="font-medium text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink"
+            >
               Go to your briefs
             </Link>
           }
@@ -229,18 +232,24 @@ function BatchSummary({
           Run a new search
         </Button>
       </div>
-      <dl className="grid grid-cols-3 gap-3 text-sm">
+      <dl className="grid grid-cols-3 divide-x divide-line border-y border-line text-sm [&>div]:px-4 [&>div:first-child]:pl-0">
         <div>
-          <dt className="text-ink-muted">Recommended</dt>
-          <dd className="text-lg font-semibold text-ink">{batch.recommendations.length}</dd>
+          <dt className="label-mono pt-3 text-ink-muted">Recommended</dt>
+          <dd className="pb-3 text-3xl font-semibold tracking-[-0.03em] tabular-nums text-ink">
+            {batch.recommendations.length}
+          </dd>
         </div>
         <div>
-          <dt className="text-ink-muted">Provisional</dt>
-          <dd className="text-lg font-semibold text-ink">{batch.provisional.length}</dd>
+          <dt className="label-mono pt-3 text-ink-muted">Provisional</dt>
+          <dd className="pb-3 text-3xl font-semibold tracking-[-0.03em] tabular-nums text-ink">
+            {batch.provisional.length}
+          </dd>
         </div>
         <div>
-          <dt className="text-ink-muted">Near matches</dt>
-          <dd className="text-lg font-semibold text-ink">{batch.nearMatches.length}</dd>
+          <dt className="label-mono pt-3 text-ink-muted">Near matches</dt>
+          <dd className="pb-3 text-3xl font-semibold tracking-[-0.03em] tabular-nums text-ink">
+            {batch.nearMatches.length}
+          </dd>
         </div>
       </dl>
       <p className="text-sm text-ink-muted">
@@ -270,15 +279,15 @@ function Group({
   return (
     <section aria-label={title} className="flex flex-col gap-4">
       <div>
-        <h2 className="flex items-center gap-2 text-lg font-semibold text-ink">
-          <Users className="size-5 text-brand" aria-hidden="true" />
+        <h2 className="label-mono flex items-center gap-2 border-b border-line pb-2 text-ink">
+          <Users className="size-3.5" aria-hidden="true" />
           {title}
-          <span className="text-sm font-normal text-ink-muted">({entries.length})</span>
+          <span className="text-ink-muted">({entries.length})</span>
         </h2>
         <p className="mt-1 text-sm text-ink-muted">{description}</p>
       </div>
       {entries.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-line-strong p-5 text-sm text-ink-muted">
+        <p className="rounded-sm border border-dashed border-line-strong p-5 text-sm text-ink-muted">
           No candidates scored 50 or more in this group.
         </p>
       ) : (

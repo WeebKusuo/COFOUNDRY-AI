@@ -64,15 +64,15 @@ export function Tabs({
               onClick={() => onChange(item.id)}
               onKeyDown={(e) => onKeyDown(e, index)}
               className={cn(
-                '-mb-px inline-flex items-center gap-2 border-b-2 px-3 py-2.5 text-sm font-semibold',
+                'label-mono -mb-px inline-flex items-center gap-2 border-b-2 px-3 py-3',
                 selected
-                  ? 'border-brand text-ink'
+                  ? 'border-ink text-ink'
                   : 'border-transparent text-ink-muted hover:text-ink',
               )}
             >
               {item.label}
               {item.count !== undefined ? (
-                <span className="tabular rounded bg-surface-sunk px-1.5 text-xs text-ink-muted">
+                <span className="tabular rounded-sm border border-line px-1.5 text-ink-muted">
                   {item.count}
                 </span>
               ) : null}
