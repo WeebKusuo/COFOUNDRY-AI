@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
   title: CoFoundry AI API
-  version: 0.6.0
+  version: 0.14.1
   description: |
     Derived from Implementation Contract v3.0, Sections 17-21. This file grows phase by phase:
-    only routes that are implemented and tested are listed (Phase 6: health, identity, profiles, startup briefs, candidate resume, recommendations).
+    only routes that are implemented and tested are listed (Phase 14 plus the interview-preparation amendment: health, identity, profiles, startup briefs, candidate resume, recommendations, AI interviews and reports, collaboration requests and matches, trial sprints, blocks, reports, corrections and moderation).
 
     Conventions (Section 17): JSON only; success `{data, requestId}`; list
     `{data, nextCursor, requestId}`; error `{error: {code, message, fieldErrors?}, requestId}`.
@@ -512,6 +512,1883 @@ paths:
           }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Error' }
+  /interviews:
+    post:
+      summary: Invite a candidate from a fresh recommendation batch (founder)
+      description: |
+        MAT-08 boundary: unexpired batch of the founder's open brief, a listed and still-visible
+        candidate, unchanged profile revision and re-passed hard gates, else 409
+        STALE_RECOMMENDATION. One interview per brief/candidate pair (409 DUPLICATE_PAIR); 20
+        invitations per founder per day (429); expires 7 days after invitation.
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [briefId, candidateUserId, batchId]
+              properties:
+                briefId: { type: string, pattern: '^[a-f0-9]{24}$' }
+                candidateUserId: { type: string, pattern: '^[a-f0-9]{24}$' }
+                batchId: { type: string, pattern: '^[a-f0-9]{24}$' }
+      responses:
+        '201': { $ref: '#/components/responses/InterviewSession' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    get:
+      summary: Own interviews as founder or candidate
+      parameters:
+        - {
+            name: role,
+            in: query,
+            required: true,
+            schema: { type: string, enum: [founder, candidate] },
+          }
+        - { name: briefId, in: query, schema: { type: string } }
+        - {
+            name: status,
+            in: query,
+            schema:
+              {
+                type: string,
+                enum:
+                  [invited, accepted, in_progress, coding, submitted, declined, expired, cancelled],
+              },
+          }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50 } }
+      responses:
+        '200':
+          description: InterviewSummary list (packages/shared/src/interview.ts) with allowedActions
+          content: { application/json: { schema: { $ref: '#/components/schemas/ListEnvelope' } } }
+  /interviews/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: X-Interview-Client, in: header, schema: { type: string, format: uuid } }
+    get:
+      summary: Participant session view (others 404)
+      description: |
+        InterviewSessionView. Candidate: own turns, drafts, readiness, coding; founder: progress
+        only until submission, then transcript, code and report status (unless consent was
+        withdrawn). Never includes expected concepts, hidden tests, resume text, prepared question
+        prompts or client ids. The candidate's `readiness.questions` reports the question plan:
+        status (waiting_for_resume, not_started, preparing, ready, stale, failed), plannedCount,
+        basedOn (project names and technologies parsed from their resume), resumeVersion, message.
+        `activeElsewhere` is true when another window holds the live room.
+      responses:
+        '200': { $ref: '#/components/responses/InterviewSession' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /interviews/{id}/brief-access:
+    post:
+      summary: Candidate acknowledges confidentiality; the full brief is released
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    additionalProperties: false,
+                    required: [confidentialityAcknowledged, noticeVersion],
+                    properties:
+                      {
+                        confidentialityAcknowledged: { const: true },
+                        noticeVersion: { const: 'conf-v3.0' },
+                      },
+                  },
+              },
+          }
+      responses:
+        '200': { $ref: '#/components/responses/InterviewSession' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /interviews/{id}/accept:
+    post:
+      summary: Candidate accepts with consents and the current profile revision (409 VERSION_CONFLICT, 409 GATE_CHANGED, 503 when no AI provider)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    additionalProperties: false,
+                    required: [briefVersion, profileRevision, consent],
+                    properties:
+                      {
+                        briefVersion: { type: integer },
+                        profileRevision: { type: integer },
+                        consent:
+                          {
+                            type: object,
+                            required: [policyVersion, items],
+                            properties:
+                              {
+                                policyVersion: { const: 'interview-ai-v1' },
+                                items:
+                                  {
+                                    type: object,
+                                    required:
+                                      [assessment, external_ai_processing, speech_transcription],
+                                    properties:
+                                      {
+                                        assessment: { type: boolean },
+                                        external_ai_processing: { type: boolean },
+                                        speech_transcription: { type: boolean },
+                                      },
+                                  },
+                              },
+                          },
+                      },
+                  },
+              },
+          }
+      responses:
+        '200': { $ref: '#/components/responses/InterviewSession' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /interviews/{id}/decline:
+    post:
+      summary: Candidate declines (terminal)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    additionalProperties: false,
+                    properties: { reason: { type: string, maxLength: 500 } },
+                  },
+              },
+          }
+      responses:
+        '200': { $ref: '#/components/responses/InterviewSession' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /interviews/{id}/cancel:
+    post:
+      summary: Either participant cancels before submission
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    additionalProperties: false,
+                    required: [reason],
+                    properties: { reason: { type: string, minLength: 1, maxLength: 500 } },
+                  },
+              },
+          }
+      responses:
+        '200': { $ref: '#/components/responses/InterviewSession' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /interviews/{id}/consent/withdraw:
+    post:
+      summary: Candidate withdraws assessment consent (cancels before submission; afterwards stops founder access and evaluation)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false } } }
+      responses:
+        '200': { $ref: '#/components/responses/InterviewSession' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /interviews/{id}/prepare:
+    post:
+      summary: Candidate prepares the interview questions from the current resume (idempotent; also started automatically on accept)
+      description: |
+        Runs in the background: resume_context (projects, contributions, tech stack from the
+        redacted resume text) and question_plan (one opening question per planned topic,
+        validated: resume quotes verbatim, slot types and difficulty, no repeats). No-op while
+        running or when a plan for the current resume version exists; a changed resume makes the
+        plan stale and this call prepares it again. 409 RESUME_REQUIRED without a usable resume;
+        503 when the AI interviewer is not configured; 429 for one hour after 10 failed preparations in a row.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false } } }
+      responses:
+        '200': { $ref: '#/components/responses/InterviewSession' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /interviews/{id}/start:
+    post:
+      summary: Candidate starts (requires X-Interview-Client; 409 RESUME_REQUIRED without a usable resume, 409 PREPARATION_REQUIRED until the question plan for the current resume is ready; repeated start attaches)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false } } }
+      responses:
+        '200': { $ref: '#/components/responses/InterviewSession' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /interviews/{id}/attach:
+    post:
+      summary: Reconnect or take over the live room from another window
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false } } }
+      responses:
+        '200': { $ref: '#/components/responses/InterviewSession' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /interviews/{id}/heartbeat:
+    post:
+      summary: Live-room heartbeat; returns serverNow and activeElsewhere
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false } } }
+      responses:
+        '200': { $ref: '#/components/responses/InterviewSession' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /interviews/{id}/next-question:
+    post:
+      summary: Retry preparing the next question after a failed or interrupted generation
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false } } }
+      responses:
+        '200': { $ref: '#/components/responses/InterviewSession' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /interviews/{id}/conversation/finish:
+    post:
+      summary: Candidate moves to the coding round early (open question is marked skipped)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    additionalProperties: false,
+                    required: [confirm],
+                    properties: { confirm: { const: true } },
+                  },
+              },
+          }
+      responses:
+        '200': { $ref: '#/components/responses/InterviewSession' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /interviews/{id}/coding/run:
+    post:
+      summary: Run the visible tests in the sandbox (503 when no sandbox; 6/min, 30 per interview)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    additionalProperties: false,
+                    required: [language, code],
+                    properties:
+                      {
+                        language: { enum: [javascript, python] },
+                        code: { type: string, maxLength: 20000 },
+                      },
+                  },
+              },
+          }
+      responses:
+        '200': { $ref: '#/components/responses/InterviewSession' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /interviews/{id}/coding/submit:
+    post:
+      summary: Submit the solution and explanation; queues evaluation
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    additionalProperties: false,
+                    required: [language, code, explanation, confirm],
+                    properties:
+                      {
+                        language: { enum: [javascript, python] },
+                        code: { type: string, maxLength: 20000 },
+                        explanation: { type: string, maxLength: 2000 },
+                        confirm: { const: true },
+                      },
+                  },
+              },
+          }
+      responses:
+        '200': { $ref: '#/components/responses/InterviewSession' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /interviews/{id}/evaluation/retry:
+    post:
+      summary: Manual evaluation retry after failure (2 per interview)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false } } }
+      responses:
+        '200': { $ref: '#/components/responses/InterviewSession' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /interviews/{id}/coding/draft:
+    put:
+      summary: Autosave the code draft
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    additionalProperties: false,
+                    required: [language, code],
+                    properties:
+                      {
+                        language: { enum: [javascript, python] },
+                        code: { type: string, maxLength: 20000 },
+                        explanation: { type: string, maxLength: 2000 },
+                      },
+                  },
+              },
+          }
+      responses:
+        '200': { $ref: '#/components/responses/InterviewSession' }
+  /interviews/{id}/turns/{n}/answer:
+    post:
+      summary: Submit (or skip) the answer to the current question; the next question is prepared in the background
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: n, in: path, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    additionalProperties: false,
+                    required: [text, inputMode],
+                    properties:
+                      {
+                        text: { type: string, maxLength: 4000 },
+                        inputMode: { enum: [voice, typed] },
+                        skip: { type: boolean },
+                      },
+                  },
+              },
+          }
+      responses:
+        '200': { $ref: '#/components/responses/InterviewSession' }
+        '409':
+          {
+            description: 'QUESTION_CLOSED or ACTIVE_ELSEWHERE',
+            content:
+              { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+          }
+  /interviews/{id}/turns/{n}/audio:
+    post:
+      summary: Upload one answer recording for transcription (raw audio body, max 4 MiB, never stored)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: n, in: path, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          audio/webm: { schema: { type: string, format: binary } }
+          audio/ogg: { schema: { type: string, format: binary } }
+          audio/wav: { schema: { type: string, format: binary } }
+          audio/mp4: { schema: { type: string, format: binary } }
+          audio/mpeg: { schema: { type: string, format: binary } }
+      responses:
+        '200': { $ref: '#/components/responses/InterviewSession' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /interviews/{id}/turns/{n}/speech:
+    get:
+      summary: Spoken question (Piper TTS), audio/wav
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: n, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          {
+            description: WAV audio,
+            content: { audio/wav: { schema: { type: string, format: binary } } },
+          }
+        '503': { $ref: '#/components/responses/Error' }
+  /interviews/{id}/voice-test:
+    get:
+      summary: Voice check for the readiness screen, audio/wav
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          {
+            description: WAV audio,
+            content: { audio/wav: { schema: { type: string, format: binary } } },
+          }
+  /interviews/{id}/report:
+    get:
+      summary: Report for both participants (founder 403 after consent withdrawal)
+      description: |
+        `{state: 'ready', report: InterviewReportView}` or `{state: 'pending', pending: {...,
+        retryAllowed}}` (packages/shared/src/report.ts). Scores are computed by the backend with
+        rubric-interview-v1; reports support human review and never decide.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          {
+            description: Report or pending state,
+            content:
+              { application/json: { schema: { $ref: '#/components/schemas/DataEnvelope' } } },
+          }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /match-requests:
+    post:
+      summary: Send a collaboration request (founder)
+      description:
+        Section 11/20. Requires the founder's open brief and that brief's evaluated interview
+        report for this candidate (not quarantined), active accounts in one cohort, no block, assessment
+        consent still active and current hard gates (409 GATE_CHANGED). One request per (brief, candidate)
+        for the brief's lifetime (409 DUPLICATE_PAIR, also after decline/withdrawal/expiry). 20 per founder
+        per day (429). Expires 7 days after creation. Another founder's brief or interview returns 404 regardless
+        of existing pairs.
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - briefId
+                - interviewId
+                - candidateUserId
+                - message
+              properties:
+                briefId:
+                  type: string
+                  pattern: ^[a-f0-9]{24}$
+                interviewId:
+                  type: string
+                  pattern: ^[a-f0-9]{24}$
+                candidateUserId:
+                  type: string
+                  pattern: ^[a-f0-9]{24}$
+                message:
+                  type: string
+                  maxLength: 1000
+      responses:
+        '201':
+          description: MatchRequestView (packages/shared/src/collaboration.ts)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    get:
+      summary: 'Own requests: box=sent (founder) or inbox (candidate)'
+      parameters:
+        - name: box
+          in: query
+          required: true
+          schema:
+            enum:
+              - inbox
+              - sent
+        - name: status
+          in: query
+          schema:
+            enum:
+              - pending
+              - accepted
+              - declined
+              - withdrawn
+              - expired
+        - name: interviewId
+          in: query
+          schema:
+            type: string
+            pattern: ^[a-f0-9]{24}$
+          description: 'sent box: the request for one interview'
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        '200':
+          description: MatchRequestView list, newest first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+  /match-requests/{id}:
+    get:
+      summary: Request with frozen terms, report facts, timeline and allowedActions (participants only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: MatchRequestView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /match-requests/{id}/accept:
+    post:
+      summary: 'Accept (candidate): creates exactly one Match in the same transaction'
+      description:
+        'Pending and before expiresAt (409 EXPIRED), brief open, accounts active, no block, gates
+        met. Writes the RelationshipGuard row and re-reads state inside the transaction. A repeat (or a
+        concurrent accept) returns the same match. Founder: 403.'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: []
+              properties: {}
+      responses:
+        '200':
+          description: '{request: MatchRequestView, match: MatchView}'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /match-requests/{id}/decline:
+    post:
+      summary: Decline (candidate, pending, not expired)
+      description: Stores the response time and optional reason.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: []
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: MatchRequestView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /match-requests/{id}/withdraw:
+    post:
+      summary: Withdraw (founder, pending)
+      description:
+        Automatic withdrawal also happens on brief close, block or suspension (shown to the other
+        person as 'unavailable').
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: []
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: MatchRequestView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /matches:
+    get:
+      summary: Own matches as founder or candidate
+      parameters:
+        - name: role
+          in: query
+          required: true
+          schema:
+            enum:
+              - founder
+              - candidate
+        - name: status
+          in: query
+          schema:
+            enum:
+              - active
+              - completed
+              - ended
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        '200':
+          description: MatchView list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+  /matches/{id}:
+    get:
+      summary: Match, agreed terms and sprint summary (participants only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: MatchView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /matches/{id}/end:
+    post:
+      summary: End an active match (either participant)
+      description: Cancels an unfinished sprint (unstarted approvals cleared). Terminal.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+      responses:
+        '200':
+          description: MatchView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /matches/{id}/sprints:
+    post:
+      summary: Propose the trial sprint (either participant; creator is proposer)
+      description:
+        One sprint per match (409 otherwise). Founder is always reviewer, candidate always contributor.
+        Hours are whole 1-10; deadline after now and within 14 days; compensation may keep or improve the
+        brief's terms, never lower them (422 with fieldErrors). Criteria ids and the canonical termsHash
+        are server-generated.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - title
+                - scope
+                - deliverables
+                - criteria
+                - expectedHours
+                - deadline
+                - compensation
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                scope:
+                  type: string
+                  minLength: 50
+                  maxLength: 2000
+                deliverables:
+                  type: array
+                  minItems: 1
+                  maxItems: 5
+                  items:
+                    type: string
+                    minLength: 1
+                    maxLength: 300
+                criteria:
+                  type: array
+                  minItems: 1
+                  maxItems: 5
+                  items:
+                    type: string
+                    minLength: 1
+                    maxLength: 300
+                expectedHours:
+                  type: integer
+                  minimum: 1
+                  maximum: 10
+                deadline:
+                  type: string
+                  format: date-time
+                  description: UTC; after now and at most 14 days ahead at send and approve
+                compensation:
+                  oneOf:
+                    - type: object
+                      additionalProperties: false
+                      required:
+                        - type
+                        - amountMinor
+                        - currency
+                        - payer
+                        - paymentDueDays
+                        - methodNote
+                      properties:
+                        type:
+                          const: paid
+                        amountMinor:
+                          type: integer
+                          minimum: 1
+                        currency:
+                          const: INR
+                        payer:
+                          const: founder
+                        paymentDueDays:
+                          type: integer
+                          minimum: 1
+                          maximum: 30
+                        methodNote:
+                          type: string
+                          minLength: 1
+                          maxLength: 300
+                    - type: object
+                      additionalProperties: false
+                      required:
+                        - type
+                        - benefitDescription
+                      properties:
+                        type:
+                          const: credit_reference
+                        benefitDescription:
+                          type: string
+                          minLength: 20
+                          maxLength: 500
+                    - type: object
+                      additionalProperties: false
+                      required:
+                        - type
+                      properties:
+                        type:
+                          const: unpaid
+      responses:
+        '201':
+          description: SprintView (version 1, status proposed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /sprints/{id}:
+    get:
+      summary:
+        'SprintParticipant: terms, version, termsHash, history, approvals, submission, review, acknowledgements
+        and allowedActions'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: SprintView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Error'
+    patch:
+      summary: Revise terms (proposer; proposed or awaiting_approval)
+      description:
+        'Increments version, recomputes termsHash, clears ALL approvals and returns to proposed.
+        Stale expectedVersion: 409 VERSION_CONFLICT. Active/submitted/reviewed terms cannot be edited.'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - expectedVersion
+                - changes
+              properties:
+                expectedVersion:
+                  type: integer
+                  minimum: 1
+                changes:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    title:
+                      type: string
+                      minLength: 1
+                      maxLength: 100
+                    scope:
+                      type: string
+                      minLength: 50
+                      maxLength: 2000
+                    deliverables:
+                      type: array
+                      minItems: 1
+                      maxItems: 5
+                      items:
+                        type: string
+                        minLength: 1
+                        maxLength: 300
+                    criteria:
+                      type: array
+                      minItems: 1
+                      maxItems: 5
+                      items:
+                        type: string
+                        minLength: 1
+                        maxLength: 300
+                    expectedHours:
+                      type: integer
+                      minimum: 1
+                      maximum: 10
+                    deadline:
+                      type: string
+                      format: date-time
+                      description: UTC; after now and at most 14 days ahead at send and approve
+                    compensation:
+                      oneOf:
+                        - type: object
+                          additionalProperties: false
+                          required:
+                            - type
+                            - amountMinor
+                            - currency
+                            - payer
+                            - paymentDueDays
+                            - methodNote
+                          properties:
+                            type:
+                              const: paid
+                            amountMinor:
+                              type: integer
+                              minimum: 1
+                            currency:
+                              const: INR
+                            payer:
+                              const: founder
+                            paymentDueDays:
+                              type: integer
+                              minimum: 1
+                              maximum: 30
+                            methodNote:
+                              type: string
+                              minLength: 1
+                              maxLength: 300
+                        - type: object
+                          additionalProperties: false
+                          required:
+                            - type
+                            - benefitDescription
+                          properties:
+                            type:
+                              const: credit_reference
+                            benefitDescription:
+                              type: string
+                              minLength: 20
+                              maxLength: 500
+                        - type: object
+                          additionalProperties: false
+                          required:
+                            - type
+                          properties:
+                            type:
+                              const: unpaid
+      responses:
+        '200':
+          description: SprintView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /sprints/{id}/send:
+    post:
+      summary: "Send the proposal (proposer): records the proposer's approval of the current version"
+      description:
+        acknowledgeUnpaid=true is required for credit_reference/unpaid terms and refused for
+        paid terms.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - expectedVersion
+              properties:
+                expectedVersion:
+                  type: integer
+                  minimum: 1
+                acknowledgeUnpaid:
+                  type: boolean
+      responses:
+        '200':
+          description: SprintView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /sprints/{id}/approve:
+    post:
+      summary: 'Approve (non-proposer): both approvals of the same version and hash start the sprint'
+      description:
+        expectedVersion and termsHash must match the current terms (409 VERSION_CONFLICT). The
+        deadline must still be within the window. Identity comes from the session only.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - expectedVersion
+                - termsHash
+              properties:
+                expectedVersion:
+                  type: integer
+                  minimum: 1
+                termsHash:
+                  type: string
+                  pattern: ^[a-f0-9]{64}$
+                acknowledgeUnpaid:
+                  type: boolean
+      responses:
+        '200':
+          description: SprintView (active)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /sprints/{id}/reject:
+    post:
+      summary: Reject a sent proposal (non-proposer)
+      description: Terminal; the match ends. An unsent draft cannot be rejected (409).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - expectedVersion
+                - reason
+              properties:
+                expectedVersion:
+                  type: integer
+                  minimum: 1
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+      responses:
+        '200':
+          description: SprintView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /sprints/{id}/cancel:
+    post:
+      summary: Cancel (either participant, any non-terminal state)
+      description: The match ends; history is kept.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+      responses:
+        '200':
+          description: SprintView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /sprints/{id}/submit:
+    post:
+      summary: Submit the single deliverable link (contributor, active, before the deadline)
+      description:
+        'HTTPS only; no credentials, localhost, .local, IP literal, fragment or non-standard
+        port; <= 2,048 chars. Never fetched by the server. No resubmission (a different link is 409; the
+        same link is a harmless repeat). After the deadline: 409 EXPIRED.'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - url
+                - sharePermissionAcknowledged
+              properties:
+                url:
+                  type: string
+                  maxLength: 2048
+                note:
+                  type: string
+                  maxLength: 2000
+                sharePermissionAcknowledged:
+                  const: true
+      responses:
+        '200':
+          description: SprintView (submitted)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /sprints/{id}/review:
+    post:
+      summary: Record the one immutable review (founder) within 7 days of submission
+      description:
+        Every criterion exactly once with outcome met/partially_met/not_met and a 1-500 character
+        reason. Overall outcome is computed (met only if all met, not_met if all not_met). Optional summary
+        (extension, 0-2,000 chars).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - criteriaResults
+              properties:
+                criteriaResults:
+                  type: array
+                  minItems: 1
+                  maxItems: 5
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - criterionId
+                      - outcome
+                      - reason
+                    properties:
+                      criterionId:
+                        type: string
+                      outcome:
+                        enum:
+                          - met
+                          - partially_met
+                          - not_met
+                      reason:
+                        type: string
+                        minLength: 1
+                        maxLength: 500
+                summary:
+                  type: string
+                  maxLength: 2000
+      responses:
+        '200':
+          description: SprintView (reviewed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /sprints/{id}/acknowledge:
+    post:
+      summary: Acknowledge the outcome (each participant once, within 7 days of the review)
+      description:
+        Receipt, not agreement; optional disagreement note. Both acknowledgements complete the
+        sprint and the match. A repeat returns the current state.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - reviewVersion
+              properties:
+                reviewVersion:
+                  type: integer
+                  minimum: 1
+                disagreementNote:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: SprintView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /blocks:
+    post:
+      summary: Block a user you have a legitimate relationship with
+      description:
+        "Interview, request or match with them, or (founders) the candidate appears in your latest
+        results; otherwise 404. No self-block (400). In one transaction with the RelationshipGuard: pending
+        requests withdrawn, active matches ended and sprints cancelled; pre-submit interviews are cancelled
+        and the founder's access to the candidate's assessment ends. The other person only sees 'This
+        collaboration is no longer available'."
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - targetUserId
+              properties:
+                targetUserId:
+                  type: string
+                  pattern: ^[a-f0-9]{24}$
+      responses:
+        '201':
+          description: BlockView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '400':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    get:
+      summary: Own directed block list (never others' blocks)
+      responses:
+        '200':
+          description: BlockView[]
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+  /blocks/{targetUserId}:
+    delete:
+      summary: Remove your own block (204)
+      description: Nothing ended by the block is revived.
+      parameters:
+        - name: targetUserId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/CsrfHeader'
+      responses:
+        '204':
+          description: Removed
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /reports:
+    post:
+      summary: Report misconduct, content or a dispute
+      description:
+        targetType user|profile|brief|report|sprint with a structured category; the reporter
+        must be an affected participant or have legitimate visibility (404 otherwise). A repeat about the
+        same target while a case is open links to it (200, linked:true). 10 cases per user per day (429).
+        Only the reporter and the assigned moderator can read it.
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - targetType
+                - targetId
+                - category
+                - text
+              properties:
+                targetType:
+                  enum:
+                    - user
+                    - profile
+                    - brief
+                    - report
+                    - sprint
+                targetId:
+                  type: string
+                  pattern: ^[a-f0-9]{24}$
+                category:
+                  enum:
+                    - harassment_or_abuse
+                    - inappropriate_content
+                    - misrepresentation
+                    - spam_or_scam
+                    - privacy_violation
+                    - sprint_dispute
+                    - assessment_error
+                    - other
+                text:
+                  type: string
+                  minLength: 10
+                  maxLength: 2000
+      responses:
+        '201':
+          description: CaseReporterView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /corrections:
+    post:
+      summary: Request a correction of your own profile or interview report
+      description:
+        Opens a correction case. Open corrections are shown on the report and request preview
+        but never change scores or decide anything.
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - targetType
+                - targetId
+                - text
+              properties:
+                targetType:
+                  enum:
+                    - profile
+                    - report
+                targetId:
+                  type: string
+                  pattern: ^[a-f0-9]{24}$
+                text:
+                  type: string
+                  minLength: 10
+                  maxLength: 2000
+      responses:
+        '201':
+          description: CaseReporterView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /cases:
+    get:
+      summary: Your reports and correction requests with status and resolution
+      parameters:
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        '200':
+          description: CaseReporterView list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListEnvelope'
+  /cases/{id}:
+    get:
+      summary: Reporter-safe case detail (reporter only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: CaseReporterView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /admin/cases:
+    get:
+      summary: Case summaries (moderator only; no case text or evidence)
+      parameters:
+        - name: status
+          in: query
+          schema:
+            enum:
+              - open
+              - in_review
+              - resolved
+              - dismissed
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        '200':
+          description: CaseSummaryView list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+  /admin/cases/{id}:
+    get:
+      summary: One case summary (moderator only; no content)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: CaseSummaryView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /admin/cases/{id}/claim:
+    post:
+      summary: Atomically assign an unclaimed open case to yourself (open -> in_review)
+      description:
+        'Report and sprint cases also place a 30-day-review dispute hold on the related evidence
+        until resolved. Already claimed by another moderator: 409.'
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: []
+              properties: {}
+      responses:
+        '200':
+          description: CaseSummaryView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Error'
+  /admin/cases/{id}/context:
+    get:
+      summary: Minimum evidence and participant ids (assigned moderator only; audited)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: CaseContextView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /admin/cases/{id}/notes:
+    post:
+      summary: Add an internal note (assigned moderator, in review)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+      responses:
+        '200':
+          description: CaseContextView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+  /admin/cases/{id}/resolve:
+    post:
+      summary: Resolve or dismiss (assigned moderator, in review)
+      description:
+        Quarantine (report targets) and suspension (cases with a target user) require decision=resolved
+        and a resolution text. A display correction (report targets) is an attributed overlay; answers,
+        numeric scores and consent history are never changed. Suspension revokes sessions and applies the
+        deletion termination rules without erasing records. Audited.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/CsrfHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - decision
+                - resolutionText
+                - quarantineReport
+                - suspendTarget
+              properties:
+                decision:
+                  enum:
+                    - resolved
+                    - dismissed
+                resolutionText:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+                displayCorrection:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+                quarantineReport:
+                  type: boolean
+                suspendTarget:
+                  type: boolean
+      responses:
+        '200':
+          description: CaseContextView
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataEnvelope'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+
 components:
   parameters:
     IdempotencyKey:
@@ -784,6 +2661,11 @@ components:
                 items: { type: string }
         requestId: { type: string, format: uuid }
   responses:
+    InterviewSession:
+      description: InterviewSessionView envelope (packages/shared/src/interview.ts) with server-computed allowedActions
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/DataEnvelope' }
     Error:
       description: Standard error envelope
       content:

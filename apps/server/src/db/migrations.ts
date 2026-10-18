@@ -146,6 +146,125 @@ export const MIGRATIONS: readonly Migration[] = [
       await batches.createIndex({ generatedAt: 1 }, { name: 'generatedAt' });
     },
   },
+  {
+    version: 7,
+    name: 'interviews-evaluation-reports',
+    up: async (conn) => {
+      // Phases 7-10: one interview per brief/candidate pair (v3.0 Section 15), list indexes for
+      // both participants, sweeper indexes for expiry/deadlines, one durable evaluation job per
+      // session, and immutable report versions.
+      for (const name of ['interview_sessions', 'evaluation_jobs', 'interview_reports']) {
+        await ensureCollection(conn, name);
+      }
+      const db = conn.db;
+      if (!db) throw new Error('database not connected');
+      const sessions = db.collection('interview_sessions');
+      await sessions.createIndex(
+        { briefId: 1, candidateUserId: 1 },
+        { unique: true, name: 'brief_candidate_unique' },
+      );
+      await sessions.createIndex(
+        { founderUserId: 1, invitedAt: -1, _id: -1 },
+        { name: 'founder_invitedAt' },
+      );
+      await sessions.createIndex(
+        { candidateUserId: 1, invitedAt: -1, _id: -1 },
+        { name: 'candidate_invitedAt' },
+      );
+      await sessions.createIndex({ status: 1, expiresAt: 1 }, { name: 'status_expiresAt' });
+      await sessions.createIndex(
+        { status: 1, globalDeadline: 1 },
+        { name: 'status_globalDeadline' },
+      );
+      await sessions.createIndex({ invitedAt: 1 }, { name: 'invitedAt' });
+      await sessions.createIndex(
+        { status: 1, evaluationStatus: 1, submittedAt: 1 },
+        { name: 'status_evaluation_submittedAt' },
+      );
+      const jobs = db.collection('evaluation_jobs');
+      await jobs.createIndex({ sessionId: 1 }, { unique: true, name: 'sessionId_unique' });
+      await jobs.createIndex({ status: 1, nextRunAt: 1 }, { name: 'status_nextRunAt' });
+      await db
+        .collection('interview_reports')
+        .createIndex(
+          { sessionId: 1, version: 1 },
+          { unique: true, name: 'session_version_unique' },
+        );
+    },
+  },
+  {
+    version: 8,
+    name: 'collaboration-sprints-safety',
+    up: async (conn) => {
+      // Phases 11-14 (v3.0 Section 16). Collections are created up front because MongoDB cannot
+      // create a collection inside a multi-document transaction on every supported version.
+      const names = [
+        'match_requests',
+        'matches',
+        'trial_sprints',
+        'blocks',
+        'relationship_guards',
+        'safety_cases',
+        'audit_events',
+      ];
+      for (const name of names) await ensureCollection(conn, name);
+      const db = conn.db;
+      if (!db) throw new Error('database not connected');
+      const requests = db.collection('match_requests');
+      // One request per (brief, candidate) for the lifetime of the brief.
+      await requests.createIndex(
+        { briefId: 1, candidateUserId: 1 },
+        { unique: true, name: 'brief_candidate_unique' },
+      );
+      await requests.createIndex(
+        { candidateUserId: 1, status: 1, createdAt: -1, _id: -1 },
+        { name: 'candidate_status' },
+      );
+      await requests.createIndex(
+        { founderUserId: 1, createdAt: -1, _id: -1 },
+        { name: 'founder_createdAt' },
+      );
+      await requests.createIndex({ status: 1, expiresAt: 1 }, { name: 'status_expiresAt' });
+      const matches = db.collection('matches');
+      await matches.createIndex({ requestId: 1 }, { unique: true, name: 'requestId_unique' });
+      await matches.createIndex(
+        { briefId: 1, candidateUserId: 1 },
+        { unique: true, name: 'brief_candidate_unique' },
+      );
+      await matches.createIndex(
+        { founderUserId: 1, createdAt: -1, _id: -1 },
+        { name: 'founder_createdAt' },
+      );
+      await matches.createIndex(
+        { candidateUserId: 1, createdAt: -1, _id: -1 },
+        { name: 'candidate_createdAt' },
+      );
+      await matches.createIndex({ status: 1, startedAt: 1 }, { name: 'status_startedAt' });
+      const sprints = db.collection('trial_sprints');
+      await sprints.createIndex({ matchId: 1 }, { unique: true, name: 'matchId_unique' });
+      await sprints.createIndex({ status: 1, 'terms.deadline': 1 }, { name: 'status_deadline' });
+      await sprints.createIndex({ founderUserId: 1, status: 1 }, { name: 'founder_status' });
+      const blocks = db.collection('blocks');
+      await blocks.createIndex(
+        { blockerUserId: 1, blockedUserId: 1 },
+        { unique: true, name: 'directed_pair_unique' },
+      );
+      await blocks.createIndex({ blockedUserId: 1 }, { name: 'blockedUserId' });
+      await db
+        .collection('relationship_guards')
+        .createIndex({ lowUserId: 1, highUserId: 1 }, { unique: true, name: 'pair_unique' });
+      const cases = db.collection('safety_cases');
+      await cases.createIndex({ status: 1, createdAt: -1, _id: -1 }, { name: 'status_createdAt' });
+      await cases.createIndex(
+        { reporterUserId: 1, createdAt: -1, _id: -1 },
+        { name: 'reporter_createdAt' },
+      );
+      await cases.createIndex({ targetType: 1, targetId: 1 }, { name: 'target' });
+      const audit = db.collection('audit_events');
+      await audit.createIndex({ time: 1 }, { name: 'time' });
+      await audit.createIndex({ targetType: 1, targetId: 1, time: 1 }, { name: 'target_time' });
+    },
+  },
 ];
 
 export const LATEST_MIGRATION = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);

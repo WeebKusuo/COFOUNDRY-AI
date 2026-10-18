@@ -23,6 +23,24 @@ import { RecommendationService } from '../../src/recommendations/service.js';
 import type { RecommendationStore } from '../../src/recommendations/store.js';
 import type { BlockPolicy } from '../../src/safety/blocks.js';
 import { MemoryRecommendationStore } from './memory-recommendation-store.js';
+import { AiProviderRegistry } from '../../src/ai/index.js';
+import { InterviewService } from '../../src/interviews/service.js';
+import { EvaluationWorker } from '../../src/interviews/evaluation.js';
+import { createDisabledSpeechServices } from '../../src/speech/services.js';
+import type { SpeechServices } from '../../src/speech/types.js';
+import { createDisabledJudge, type CodeJudge } from '../../src/coding/judge.js';
+import {
+  MemoryEvaluationJobStore,
+  MemoryInterviewStore,
+  MemoryReportStore,
+} from './memory-interview-store.js';
+import type { InterviewLimiters } from '../../src/http/routes/interviews.js';
+import { blockPolicyFromStore } from '../../src/safety/blocks.js';
+import { buildCollaborationAndSafety } from '../../src/safety/wiring.js';
+import type { CollaborationService } from '../../src/collaboration/requests.js';
+import type { SprintService } from '../../src/collaboration/sprints.js';
+import type { SafetyService } from '../../src/safety/service.js';
+import { createMemoryPhase11Stores } from './memory-collaboration-store.js';
 
 export const TEST_PASSWORD = 'correct-horse-battery';
 
@@ -67,6 +85,15 @@ export interface Harness {
   resumes: ResumeService;
   recommendationStore: RecommendationStore;
   recommendations: RecommendationService;
+  interviewStore: MemoryInterviewStore;
+  jobStore: MemoryEvaluationJobStore;
+  reportStore: MemoryReportStore;
+  interviews: InterviewService;
+  worker: EvaluationWorker;
+  phase11: ReturnType<typeof createMemoryPhase11Stores>;
+  collaboration: CollaborationService;
+  sprints: SprintService;
+  safety: SafetyService;
 }
 
 export function buildHarness(
@@ -83,6 +110,11 @@ export function buildHarness(
     now?: () => Date;
     config?: Partial<AppConfig>;
     authOptions?: Partial<AuthServiceOptions>;
+    ai?: AiProviderRegistry;
+    speech?: SpeechServices;
+    judge?: CodeJudge;
+    aiCall?: { timeoutMs: number; maxAttempts: number };
+    interviewLimiters?: Partial<InterviewLimiters>;
   } & Pick<
     AppDependencies,
     'extraV1Routes' | 'rateLimiters' | 'resumeUploadLimiter' | 'searchLimiter'
@@ -109,23 +141,77 @@ export function buildHarness(
     silentLogger,
   );
   const recommendationStore = options.recommendationStore ?? new MemoryRecommendationStore();
+  const phase11 = createMemoryPhase11Stores();
   const recommendations = new RecommendationService(
     recommendationStore,
     briefStore,
     store,
     profileStore,
-    options.blocks,
+    options.blocks ?? blockPolicyFromStore(phase11.blocks),
     options.now,
   );
+  const interviewStore = new MemoryInterviewStore();
+  const jobStore = new MemoryEvaluationJobStore();
+  const reportStore = new MemoryReportStore();
+  const ai = options.ai ?? new AiProviderRegistry();
+  const judge = options.judge ?? createDisabledJudge();
+  const aiCall = options.aiCall ?? { timeoutMs: 5_000, maxAttempts: 2 };
+  const noSleep = async () => undefined;
+  const interviews = new InterviewService({
+    store: interviewStore,
+    jobs: jobStore,
+    reports: reportStore,
+    briefStore,
+    briefs,
+    identity: store,
+    profiles: profileStore,
+    recommendations,
+    resumes,
+    ai,
+    aiCall,
+    speech: options.speech ?? createDisabledSpeechServices(),
+    judge,
+    logger: silentLogger,
+    ...(options.now ? { now: options.now } : {}),
+    sleep: noSleep,
+  });
+  const worker = new EvaluationWorker({
+    jobs: jobStore,
+    store: interviewStore,
+    reports: reportStore,
+    interviews,
+    identity: store,
+    ai,
+    aiCall,
+    judge,
+    logger: silentLogger,
+    ...(options.now ? { now: options.now } : {}),
+    sleep: noSleep,
+    jobBackoffMs: 0,
+  });
+  const built = buildCollaborationAndSafety(phase11, {
+    identity: store,
+    briefStore,
+    briefs,
+    profiles: profileStore,
+    profileService: profiles,
+    interviews,
+    recommendations,
+    ...(options.now ? { now: options.now } : {}),
+  });
   const app = createApp({
     config,
     logger: silentLogger,
+    collaboration: { requests: built.collaboration, sprints: built.sprints },
+    safety: built.safety,
     auth,
     profiles,
     briefs,
     idempotency: idempotencyStore,
     resumes,
     recommendations,
+    interviews,
+    ...(options.interviewLimiters ? { interviewLimiters: options.interviewLimiters } : {}),
     ...(options.searchLimiter ? { searchLimiter: options.searchLimiter } : {}),
     ...(options.resumeUploadLimiter ? { resumeUploadLimiter: options.resumeUploadLimiter } : {}),
     ...(options.extraV1Routes ? { extraV1Routes: options.extraV1Routes } : {}),
@@ -145,6 +231,15 @@ export function buildHarness(
     resumes,
     recommendationStore,
     recommendations,
+    interviewStore,
+    jobStore,
+    reportStore,
+    interviews,
+    worker,
+    phase11,
+    collaboration: built.collaboration,
+    sprints: built.sprints,
+    safety: built.safety,
   };
 }
 
@@ -192,10 +287,14 @@ export class TestClient {
   }
 
   /** Raw body upload (e.g. application/pdf) with CSRF and Origin like a browser fetch. */
-  async upload(path: string, bytes: Buffer, headers: Record<string, string>) {
+  async upload(
+    path: string,
+    bytes: Buffer,
+    headers: Record<string, string>,
+    method: 'put' | 'post' = 'put',
+  ) {
     if (!this.csrf) await this.refreshCsrf();
-    let req = this.agent
-      .put(`/api/v1${path}`)
+    let req = this.agent[method](`/api/v1${path}`)
       .set('Origin', TEST_ORIGIN)
       .set('X-CSRF-Token', this.csrf ?? '');
     for (const [k, v] of Object.entries(headers)) req = req.set(k, v);

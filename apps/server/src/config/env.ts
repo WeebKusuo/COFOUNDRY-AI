@@ -13,12 +13,39 @@ export type NodeEnv = 'development' | 'test' | 'production';
 export type LogLevel = 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
 
 export interface LlmConfig {
-  /** Provider label, e.g. "disabled". Adapter lookup happens in src/ai/registry.ts. */
+  /** Provider label: disabled | groq | openai-compatible | mock (tests only). */
   provider: string;
-  /** Exact tested model identifier; null when the provider is disabled. */
-  model: string | null;
+  /** Model for questions, follow-ups, resume context and task selection; null when disabled. */
+  interviewerModel: string | null;
+  /** Separately configured evaluation model; null when disabled. */
+  evaluatorModel: string | null;
   /** Backend-only secret; never sent to the browser or logged. */
   apiKey: string | null;
+  /** OpenAI-compatible base URL override (Groq has a built-in default). */
+  baseUrl: string | null;
+  /** Per-attempt timeout. */
+  timeoutMs: number;
+  /** Attempts per call including the first (retry with backoff on 429/5xx/timeouts). */
+  maxAttempts: number;
+}
+
+export interface SpeechConfig {
+  /** disabled | http (the Python speech service) | mock (tests only). */
+  provider: 'disabled' | 'http' | 'mock';
+  url: string | null;
+  /** Shared secret for the internal speech service (bearer token). */
+  token: string | null;
+  timeoutMs: number;
+}
+
+export interface CodeExecutionConfig {
+  /** disabled | judge0 (self-hosted Judge0 CE) | mock (tests only; never executes code). */
+  provider: 'disabled' | 'judge0' | 'mock';
+  judge0Url: string | null;
+  judge0AuthToken: string | null;
+  /** Judge0 language ids for the supported languages (instance-specific). */
+  languageIds: { javascript: number; python: number };
+  timeoutMs: number;
 }
 
 export interface AppConfig {
@@ -32,6 +59,8 @@ export interface AppConfig {
   mongodbUri: string;
   sessionTtlSeconds: number;
   llm: LlmConfig;
+  speech: SpeechConfig;
+  codeExecution: CodeExecutionConfig;
   demoMode: boolean;
   logLevel: LogLevel;
   trustProxyHops: number;
@@ -77,8 +106,24 @@ const rawSchema = z.object({
     .trim()
     .regex(/^[a-z0-9][a-z0-9-]{0,39}$/, 'LLM_PROVIDER must be a lowercase label like "disabled"')
     .default('disabled'),
+  /** Phase 4 name, kept as a fallback for LLM_INTERVIEWER_MODEL. */
   LLM_MODEL: optionalText,
+  LLM_INTERVIEWER_MODEL: optionalText,
+  LLM_EVALUATOR_MODEL: optionalText,
   LLM_API_KEY: optionalText,
+  LLM_BASE_URL: optionalText,
+  LLM_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(20_000),
+  LLM_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(5).default(3),
+  SPEECH_PROVIDER: z.enum(['disabled', 'http', 'mock']).default('disabled'),
+  SPEECH_SERVICE_URL: optionalText,
+  SPEECH_SERVICE_TOKEN: optionalText,
+  SPEECH_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000).default(90_000),
+  CODE_EXECUTION_PROVIDER: z.enum(['disabled', 'judge0', 'mock']).default('disabled'),
+  JUDGE0_URL: optionalText,
+  JUDGE0_AUTH_TOKEN: optionalText,
+  JUDGE0_LANGUAGE_ID_JAVASCRIPT: z.coerce.number().int().min(1).default(63),
+  JUDGE0_LANGUAGE_ID_PYTHON: z.coerce.number().int().min(1).default(71),
+  JUDGE0_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(30_000),
   DEMO_MODE: boolString.default(true),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).optional(),
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
@@ -136,6 +181,19 @@ function isLoopbackHost(hostname: string): boolean {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
 }
 
+/** Service endpoints: https, or http on loopback only; never embedded credentials. */
+function isServiceUrl(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.username || url.password) return false;
+  if (url.protocol === 'https:') return true;
+  return url.protocol === 'http:' && isLoopbackHost(url.hostname);
+}
+
 export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = rawSchema.safeParse(source);
   if (!parsed.success) {
@@ -161,14 +219,49 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
   }
 
   const provider = raw.LLM_PROVIDER;
-  if (provider !== 'disabled') {
-    if (!raw.LLM_MODEL) problems.push('LLM_MODEL is required when LLM_PROVIDER is not "disabled"');
+  const interviewerModel = raw.LLM_INTERVIEWER_MODEL ?? raw.LLM_MODEL;
+  const evaluatorModel = raw.LLM_EVALUATOR_MODEL;
+  const realLlm = provider !== 'disabled' && provider !== 'mock';
+  if (realLlm) {
+    if (!interviewerModel) {
+      problems.push('LLM_INTERVIEWER_MODEL is required when LLM_PROVIDER is a real provider');
+    }
+    if (!evaluatorModel) {
+      problems.push('LLM_EVALUATOR_MODEL is required when LLM_PROVIDER is a real provider');
+    }
     if (!raw.LLM_API_KEY) {
-      problems.push('LLM_API_KEY is required when LLM_PROVIDER is not "disabled"');
+      problems.push('LLM_API_KEY is required when LLM_PROVIDER is a real provider');
     }
   }
   if (isProduction && (provider === 'mock' || provider === 'fake' || provider === 'test')) {
     problems.push(`LLM_PROVIDER "${provider}" is not allowed in production`);
+  }
+  for (const [name, value] of [
+    ['LLM_BASE_URL', raw.LLM_BASE_URL],
+    ['SPEECH_SERVICE_URL', raw.SPEECH_SERVICE_URL],
+    ['JUDGE0_URL', raw.JUDGE0_URL],
+  ] as const) {
+    if (value && !isServiceUrl(value)) {
+      problems.push(`${name} must be an http(s) URL without credentials (http only on localhost)`);
+    }
+  }
+  if (raw.SPEECH_PROVIDER === 'http') {
+    if (!raw.SPEECH_SERVICE_URL)
+      problems.push('SPEECH_SERVICE_URL is required when SPEECH_PROVIDER=http');
+    if (!raw.SPEECH_SERVICE_TOKEN || raw.SPEECH_SERVICE_TOKEN.length < 32) {
+      problems.push(
+        'SPEECH_SERVICE_TOKEN (at least 32 characters) is required when SPEECH_PROVIDER=http',
+      );
+    }
+  }
+  if (raw.CODE_EXECUTION_PROVIDER === 'judge0' && !raw.JUDGE0_URL) {
+    problems.push('JUDGE0_URL is required when CODE_EXECUTION_PROVIDER=judge0');
+  }
+  if (isProduction && raw.SPEECH_PROVIDER === 'mock') {
+    problems.push('SPEECH_PROVIDER "mock" is not allowed in production');
+  }
+  if (isProduction && raw.CODE_EXECUTION_PROVIDER === 'mock') {
+    problems.push('CODE_EXECUTION_PROVIDER "mock" is not allowed in production');
   }
 
   const webDistDir = raw.WEB_DIST_DIR ? path.resolve(raw.WEB_DIST_DIR) : defaultWebDistDir();
@@ -195,8 +288,28 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     sessionTtlSeconds: raw.SESSION_TTL_SECONDS,
     llm: {
       provider,
-      model: provider === 'disabled' ? null : raw.LLM_MODEL,
-      apiKey: provider === 'disabled' ? null : raw.LLM_API_KEY,
+      interviewerModel: realLlm ? interviewerModel : null,
+      evaluatorModel: realLlm ? evaluatorModel : null,
+      apiKey: realLlm ? raw.LLM_API_KEY : null,
+      baseUrl: realLlm ? raw.LLM_BASE_URL : null,
+      timeoutMs: raw.LLM_TIMEOUT_MS,
+      maxAttempts: raw.LLM_MAX_ATTEMPTS,
+    },
+    speech: {
+      provider: raw.SPEECH_PROVIDER,
+      url: raw.SPEECH_PROVIDER === 'http' ? raw.SPEECH_SERVICE_URL : null,
+      token: raw.SPEECH_PROVIDER === 'http' ? raw.SPEECH_SERVICE_TOKEN : null,
+      timeoutMs: raw.SPEECH_TIMEOUT_MS,
+    },
+    codeExecution: {
+      provider: raw.CODE_EXECUTION_PROVIDER,
+      judge0Url: raw.CODE_EXECUTION_PROVIDER === 'judge0' ? raw.JUDGE0_URL : null,
+      judge0AuthToken: raw.CODE_EXECUTION_PROVIDER === 'judge0' ? raw.JUDGE0_AUTH_TOKEN : null,
+      languageIds: {
+        javascript: raw.JUDGE0_LANGUAGE_ID_JAVASCRIPT,
+        python: raw.JUDGE0_LANGUAGE_ID_PYTHON,
+      },
+      timeoutMs: raw.JUDGE0_TIMEOUT_MS,
     },
     demoMode: raw.DEMO_MODE,
     logLevel: raw.LOG_LEVEL ?? (raw.NODE_ENV === 'test' ? 'silent' : 'info'),
@@ -216,7 +329,10 @@ export function describeConfig(config: AppConfig): Record<string, unknown> {
     appOrigin: config.appOrigin,
     demoMode: config.demoMode,
     llmProvider: config.llm.provider,
-    llmModel: config.llm.model,
+    llmInterviewerModel: config.llm.interviewerModel,
+    llmEvaluatorModel: config.llm.evaluatorModel,
+    speechProvider: config.speech.provider,
+    codeExecutionProvider: config.codeExecution.provider,
     serveWeb: config.serveWeb,
     trustProxyHops: config.trustProxyHops,
   };

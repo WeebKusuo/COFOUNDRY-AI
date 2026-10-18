@@ -236,15 +236,19 @@ export const api = {
     assertEnvelope(payload);
     return (payload as ApiSuccess<T>).data;
   },
-  /** PUT of a raw file body (resume PDF). CSRF and the stale-token retry apply as usual. */
+  /**
+   * Raw body upload (resume PDF via PUT, interview answer audio via POST). CSRF and the
+   * stale-token retry apply as usual.
+   */
   async upload<T>(
     path: string,
     file: Blob,
     contentType: string,
     headers: Record<string, string> = {},
+    method: 'PUT' | 'POST' = 'PUT',
   ): Promise<T> {
     const payload = await request(path, {
-      method: 'PUT',
+      method,
       headers,
       raw: { body: file, contentType },
     });

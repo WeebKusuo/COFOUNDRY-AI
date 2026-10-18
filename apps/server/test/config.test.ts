@@ -30,7 +30,17 @@ describe('loadConfig', () => {
     const config = loadConfig(base);
     expect(config.port).toBe(5000);
     expect(config.sessionTtlSeconds).toBe(28_800);
-    expect(config.llm).toEqual({ provider: 'disabled', model: null, apiKey: null });
+    expect(config.llm).toEqual({
+      provider: 'disabled',
+      interviewerModel: null,
+      evaluatorModel: null,
+      apiKey: null,
+      baseUrl: null,
+      timeoutMs: 20_000,
+      maxAttempts: 3,
+    });
+    expect(config.speech.provider).toBe('disabled');
+    expect(config.codeExecution).toMatchObject({ provider: 'disabled', judge0Url: null });
     expect(config.demoMode).toBe(true);
     expect(config.serveWeb).toBe(false);
   });
@@ -82,9 +92,69 @@ describe('loadConfig', () => {
     );
   });
 
-  it('requires model and key when an LLM provider is enabled', () => {
-    const problems = problemsOf({ ...base, LLM_PROVIDER: 'openai' });
-    expect(problems).toHaveLength(2);
+  it('requires separately configured models and a key when a real LLM provider is enabled', () => {
+    const problems = problemsOf({ ...base, LLM_PROVIDER: 'groq' });
+    expect(problems).toEqual([
+      'LLM_INTERVIEWER_MODEL is required when LLM_PROVIDER is a real provider',
+      'LLM_EVALUATOR_MODEL is required when LLM_PROVIDER is a real provider',
+      'LLM_API_KEY is required when LLM_PROVIDER is a real provider',
+    ]);
+    const ok = loadConfig({
+      ...base,
+      LLM_PROVIDER: 'groq',
+      LLM_INTERVIEWER_MODEL: 'llama-3.3-70b-versatile',
+      LLM_EVALUATOR_MODEL: 'openai/gpt-oss-120b',
+      LLM_API_KEY: 'gsk_x',
+    });
+    expect(ok.llm).toMatchObject({
+      interviewerModel: 'llama-3.3-70b-versatile',
+      evaluatorModel: 'openai/gpt-oss-120b',
+    });
+    // The Phase 4 LLM_MODEL name still works as the interviewer model.
+    expect(
+      loadConfig({
+        ...base,
+        LLM_PROVIDER: 'groq',
+        LLM_MODEL: 'm1',
+        LLM_EVALUATOR_MODEL: 'm2',
+        LLM_API_KEY: 'k',
+      }).llm.interviewerModel,
+    ).toBe('m1');
+  });
+
+  it('validates speech and code-execution settings', () => {
+    expect(problemsOf({ ...base, SPEECH_PROVIDER: 'http' })).toEqual([
+      'SPEECH_SERVICE_URL is required when SPEECH_PROVIDER=http',
+      'SPEECH_SERVICE_TOKEN (at least 32 characters) is required when SPEECH_PROVIDER=http',
+    ]);
+    expect(problemsOf({ ...base, CODE_EXECUTION_PROVIDER: 'judge0' })).toEqual([
+      'JUDGE0_URL is required when CODE_EXECUTION_PROVIDER=judge0',
+    ]);
+    expect(problemsOf({ ...base, JUDGE0_URL: 'http://10.0.0.8:2358' })[0]).toMatch(
+      /JUDGE0_URL must be an http\(s\) URL/,
+    );
+    expect(problemsOf({ ...base, SPEECH_SERVICE_URL: 'https://u:p@speech.example' })[0]).toMatch(
+      /without credentials/,
+    );
+    expect(
+      problemsOf({ ...production, SPEECH_PROVIDER: 'mock', CODE_EXECUTION_PROVIDER: 'mock' }),
+    ).toEqual([
+      'SPEECH_PROVIDER "mock" is not allowed in production',
+      'CODE_EXECUTION_PROVIDER "mock" is not allowed in production',
+    ]);
+    const c = loadConfig({
+      ...base,
+      SPEECH_PROVIDER: 'http',
+      SPEECH_SERVICE_URL: 'http://127.0.0.1:8765',
+      SPEECH_SERVICE_TOKEN: 'x'.repeat(32),
+      CODE_EXECUTION_PROVIDER: 'judge0',
+      JUDGE0_URL: 'https://judge0.internal.example',
+    });
+    expect(c.speech).toMatchObject({ provider: 'http', url: 'http://127.0.0.1:8765' });
+    expect(c.codeExecution).toMatchObject({
+      provider: 'judge0',
+      languageIds: { javascript: 63, python: 71 },
+    });
   });
 
   it('refuses mock providers in production', () => {
@@ -109,12 +179,21 @@ describe('loadConfig', () => {
   it('never includes secrets in the startup summary', () => {
     const config = loadConfig({
       ...production,
-      LLM_PROVIDER: 'openai',
-      LLM_MODEL: 'model-x',
+      LLM_PROVIDER: 'groq',
+      LLM_INTERVIEWER_MODEL: 'model-x',
+      LLM_EVALUATOR_MODEL: 'model-y',
       LLM_API_KEY: 'sk-super-secret',
+      SPEECH_PROVIDER: 'http',
+      SPEECH_SERVICE_URL: 'https://speech.internal.example',
+      SPEECH_SERVICE_TOKEN: 'speech-token-'.padEnd(40, 'z'),
+      CODE_EXECUTION_PROVIDER: 'judge0',
+      JUDGE0_URL: 'https://judge0.internal.example',
+      JUDGE0_AUTH_TOKEN: 'judge-secret-token',
     });
     const summary = JSON.stringify(describeConfig(config));
     expect(summary).not.toContain('sk-super-secret');
+    expect(summary).not.toContain('speech-token');
+    expect(summary).not.toContain('judge-secret-token');
     expect(summary).not.toContain('secret@');
   });
 });

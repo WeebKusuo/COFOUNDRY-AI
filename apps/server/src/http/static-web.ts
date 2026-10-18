@@ -31,10 +31,17 @@ export function createStaticWebRouter(webDistDir: string): Router | null {
       setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
     }),
   );
+  const shell = fs.readFileSync(indexFile, 'utf8');
   router.get(/^\/(?!api(?:\/|$)).*/, (req, res, next) => {
     if (!req.accepts('html')) return next();
     res.setHeader('Cache-Control', 'no-cache');
-    res.sendFile(indexFile);
+    // The nonce (base64, generated per response) lets our bundled editor add <style> elements.
+    const nonce = String(res.locals.cspNonce ?? '');
+    res
+      .type('html')
+      .send(
+        shell.replace(/<head(\s[^>]*)?>/i, (h) => `${h}<meta name="csp-nonce" nonce="${nonce}" />`),
+      );
   });
   return router;
 }

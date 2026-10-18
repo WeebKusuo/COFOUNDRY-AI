@@ -1,6 +1,6 @@
 import express, { type Express } from 'express';
 import { pinoHttp } from 'pino-http';
-import { API_PREFIX, LIMITS } from '@cofoundry/shared';
+import { API_PREFIX, AUDIO_CONTENT_TYPES, LIMITS } from '@cofoundry/shared';
 import type { AppConfig } from '../config/env.js';
 import type { Logger } from '../lib/logger.js';
 import { noStore, requestContext } from './middleware/request-context.js';
@@ -15,6 +15,11 @@ import type { IdempotencyStore } from '../briefs/store.js';
 import type { ResumeService } from '../resumes/service.js';
 import type { RecommendationService } from '../recommendations/service.js';
 import { RESUME_UPLOAD_PATH } from './routes/resumes.js';
+import { INTERVIEW_AUDIO_PATH_PATTERN, type InterviewLimiters } from './routes/interviews.js';
+import type { InterviewService } from '../interviews/service.js';
+import type { CollaborationService } from '../collaboration/requests.js';
+import type { SprintService } from '../collaboration/sprints.js';
+import type { SafetyService } from '../safety/service.js';
 import { apiNotFound, errorHandler } from './middleware/error-handler.js';
 import { createV1Router } from './routes/v1.js';
 import { createStaticWebRouter } from './static-web.js';
@@ -28,6 +33,11 @@ export interface AppDependencies {
   idempotency: IdempotencyStore;
   resumes: ResumeService;
   recommendations: RecommendationService;
+  interviews: InterviewService;
+  collaboration?: { requests: CollaborationService; sprints: SprintService };
+  safety?: SafetyService;
+  /** Override interview limiters (tests). */
+  interviewLimiters?: Partial<InterviewLimiters>;
   /** Override the discovery search limiter (tests). */
   searchLimiter?: express.RequestHandler;
   /** Override the resume upload limiter (tests use tiny limits). */
@@ -86,6 +96,7 @@ export function createApp(deps: AppDependencies): Express {
   api.use(
     createJsonBodyGuard([
       { method: 'PUT', path: `${API_PREFIX}${RESUME_UPLOAD_PATH}`, contentType: 'application/pdf' },
+      { method: 'POST', path: INTERVIEW_AUDIO_PATH_PATTERN, contentType: AUDIO_CONTENT_TYPES },
     ]),
   );
   api.use(express.json({ limit: LIMITS.jsonBodyBytes, strict: true, type: 'application/json' }));
@@ -99,6 +110,10 @@ export function createApp(deps: AppDependencies): Express {
       idempotency: deps.idempotency,
       resumes: deps.resumes,
       recommendations: deps.recommendations,
+      interviews: deps.interviews,
+      ...(deps.collaboration ? { collaboration: deps.collaboration } : {}),
+      ...(deps.safety ? { safety: deps.safety } : {}),
+      ...(deps.interviewLimiters ? { interviewLimiters: deps.interviewLimiters } : {}),
       ...(deps.searchLimiter ? { searchLimiter: deps.searchLimiter } : {}),
       ...(deps.resumeUploadLimiter ? { resumeUploadLimiter: deps.resumeUploadLimiter } : {}),
       cookies,

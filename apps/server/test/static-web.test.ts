@@ -10,7 +10,10 @@ let dist: string;
 beforeAll(() => {
   dist = fs.mkdtempSync(path.join(os.tmpdir(), 'cofoundry-web-'));
   fs.mkdirSync(path.join(dist, 'assets'));
-  fs.writeFileSync(path.join(dist, 'index.html'), '<!doctype html><title>CoFoundry AI</title>');
+  fs.writeFileSync(
+    path.join(dist, 'index.html'),
+    '<!doctype html><html><head><title>CoFoundry AI</title></head><body></body></html>',
+  );
   fs.writeFileSync(path.join(dist, 'assets', 'app-abc123.js'), 'console.log(1)');
 });
 
@@ -26,6 +29,15 @@ describe('same-origin SPA hosting', () => {
     expect(res.status).toBe(200);
     expect(res.text).toContain('CoFoundry AI');
     expect(res.headers['cache-control']).toBe('no-cache');
+  });
+
+  it('injects a per-response CSP nonce matching the style-src header', async () => {
+    const a = await request(app()).get('/').set('Accept', 'text/html');
+    const b = await request(app()).get('/').set('Accept', 'text/html');
+    const nonce = /<meta name="csp-nonce" nonce="([^"]+)"/.exec(a.text)?.[1];
+    expect(nonce).toBeTruthy();
+    expect(a.headers['content-security-policy']).toContain(`'nonce-${nonce}'`);
+    expect(b.text).not.toContain(nonce!);
   });
 
   it('falls back to index.html for client routes', async () => {

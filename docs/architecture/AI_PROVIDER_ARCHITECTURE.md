@@ -1,102 +1,96 @@
 # AI provider architecture
 
-Status: Phase 4 — contracts and integration points only. No model is called anywhere yet; every
-capability is registered as `disabled`. Question generation and adaptive follow-up now use the
-versioned contract `ai-interview-contract-v1` (`packages/shared/src/interview.ts`).
+Status: Phases 7–10 plus the interview-preparation amendment. The interview uses seven LLM capabilities behind one provider abstraction,
+plus separate interfaces for speech-to-text, text-to-speech and code execution. Every provider is
+replaceable by configuration, and every one defaults to `disabled`.
 
-## Goals
-
-- Swap any model (the AI team's fine-tuned service, an external LLM, a speech API) by configuration,
-  without changing business logic.
-- Keep every credential on the server and log metadata only.
-- Keep technical scores, language feedback and observable presentation signals **separate**.
-- Make consent a precondition that code cannot skip.
+**No video analysis.** There is no face, gaze, posture, emotion, nervousness, confidence or
+cheating inference from video or audio. The optional camera self-view is rendered only in the
+candidate's browser (a muted `<video>` element); it is never recorded, uploaded or analysed.
 
 ## Shape
 
 ```
-business code ──► invokeCapability(registry, capability, input, {timeoutMs, outputSchema, consent})
-                         │  consent check (audio/video)      ─► consent_missing
-                         │  timeout + outer cancellation     ─► timeout / cancelled
-                         │  adapter.run(input, ctx)          ─► raw output + token usage
-                         │  strict zod validation, no clamp  ─► invalid_output
+business code ──► invokeCapability(registry, capability, input, {timeoutMs, outputSchema, consent, validate, retry})
+                         │  consent (assessment + external processing) ─► consent_missing
+                         │  per-attempt timeout + outer cancellation   ─► timeout / cancelled
+                         │  adapter.run(input, ctx)                     ─► raw JSON + token usage
+                         │  strict zod schema, no clamping or repair    ─► invalid_output
+                         │  semantic checks (evidence, interview policy) ─► invalid_output
+                         │  retry with exponential backoff (honours 429 Retry-After)
                          ▼
                   ProviderResult<T> = {ok:true, value, meta} | {ok:false, error, meta}
 ```
 
-| File (`apps/server/src/ai/`) | Purpose                                                                                  |
-| ---------------------------- | ---------------------------------------------------------------------------------------- |
-| `types.ts`                   | Capability list, draft input types, `CapabilityAdapter`, `ProviderResult`, consent proof |
-| `registry.ts`                | `AiProviderRegistry`, `PROVIDER_FACTORIES`, `createAiRegistry` (fails on unknown labels) |
-| `invoke.ts`                  | The single call path: consent, timeout, cancellation, validation, metadata logging       |
-| `transport/http-json.ts`     | JSON-over-HTTPS client for model services: no redirects, size cap, bearer key            |
-| `adapters/disabled.ts`       | Production-safe default; every call returns `disabled`                                   |
+| File (`apps/server/src/ai/`)    | Purpose                                                                         |
+| ------------------------------- | ------------------------------------------------------------------------------- |
+| `types.ts`                      | Capabilities, inputs, `CapabilityAdapter`, `ProviderResult`, consent proof      |
+| `registry.ts`                   | `AiProviderRegistry`, factories `disabled`, `groq`, `openai-compatible`, `mock` |
+| `invoke.ts`                     | The single call path: consent, timeout, validation, retries, metadata-only logs |
+| `prompts.ts`                    | Fixed system prompts (versioned); candidate content only as JSON data           |
+| `contracts.ts`                  | Output schemas, evidence checks, interview-policy checks, similarity            |
+| `adapters/openai-compatible.ts` | Groq / vLLM / llama.cpp / Ollama chat-completions with JSON mode                |
+| `adapters/mock.ts`              | Deterministic test double (tests and E2E only; refused in production)           |
+| `adapters/disabled.ts`          | Production-safe default                                                         |
 
-The module depends only on `zod` and itself, so it can be tested and reviewed independently.
+| Other interface             | Implementation                                                           |
+| --------------------------- | ------------------------------------------------------------------------ |
+| `src/speech` `SpeechToText` | faster-whisper in `services/speech` (HTTP, bearer token); disabled; mock |
+| `src/speech` `TextToSpeech` | Piper in `services/speech`; disabled; mock                               |
+| `src/coding` `CodeJudge`    | Judge0 CE (self-hosted); disabled (default); mock (never executes code)  |
 
 ## Capabilities
 
-| Capability             | Owner         | Notes                                                                                                                                                                                              |
-| ---------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `question_generation`  | Dev 2         | User's fine-tuned API: resume-based technical questions from `ResumeQuestionGenerationInput` (redacted resume text, skills, required skills)                                                       |
-| `follow_up_generation` | Dev 2         | User's fine-tuned API: one adaptive follow-up from one question and its one answer (`FollowUpGenerationInput`)                                                                                     |
-| `technical_evaluation` | Dev 1         | Correctness, reasoning, completeness, practicality per answer; backend computes totals                                                                                                             |
-| `language_evaluation`  | Dev 1         | English/Hindi detection plus grammar, clarity, communication feedback — never mixed into technical scores                                                                                          |
-| `speech_analysis`      | Dev 1         | Transcription with timestamps; pace and pauses computed deterministically by the backend. Needs `interview_audio` consent                                                                          |
-| `video_signals`        | Dev 1         | Observable events only (`face_visible`, `face_not_visible`, `multiple_faces`, `gaze_off_screen`, `camera_interrupted`). Never cheating, confidence or nervousness. Needs `interview_video` consent |
-| `cross_validation`     | Dev 1 / Dev 2 | Validation logic supplied by the AI team                                                                                                                                                           |
+| Capability                 | Model       | Output (validated)                                                      |
+| -------------------------- | ----------- | ----------------------------------------------------------------------- |
+| `resume_context`           | interviewer | skills, projects, experience, achievements — each with a verbatim quote |
+| `question_plan`            | interviewer | one opening question per planned topic slot (before start), quotes      |
+| `interview_turn`           | interviewer | steering signal for the last answer + next question (type, intent, …)   |
+| `coding_task_selection`    | interviewer | one task id from the fixed bank + reason                                |
+| `answer_evaluation`        | evaluator   | six dimensions 0–4/null with quotes, concepts, gaps, uncertainty        |
+| `communication_evaluation` | evaluator   | five communication dimensions 0–4/null with quotes, feedback            |
+| `code_review`              | evaluator   | readability, approach, edge cases 0–4/null with code excerpts, issues   |
 
-## Adding a provider (checklist)
+Models never produce aggregates: schemas are strict objects (an extra `score` key is rejected)
+and the backend computes everything from `packages/shared/src/rubric.ts`.
 
-1. Create `adapters/<provider>.ts` implementing `CapabilityAdapter<C>` for the capabilities it covers.
-   Use `createHttpJsonTransport` for HTTP services; never accept URLs from user input.
-2. Register a factory in `PROVIDER_FACTORIES`. Read secrets from server config only.
-3. Define a strict zod output schema next to the business code that consumes it.
-4. Send minimum data: no user IDs, emails, phone numbers or full startup ideas. Delimit candidate
-   text as data, never as instructions.
-5. Record the exact model identifier and bump `adapterVersion` on any prompt/parsing change.
-6. Add tests with a local HTTP stub (see `test/ai/http-json.test.ts`) and, for graders, run the
-   Section 10 calibration diagnostic before claiming reliability.
+## Chosen providers and licences (verified 18 October 2026)
 
-## Reports (later phases)
+| Role           | Default (env-configurable)                  | Licence                                                   | Notes                                                                                    |
+| -------------- | ------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Interviewer    | Groq `llama-3.3-70b-versatile` (production) | Llama 3.3 Community Licence (open weights, AUP, 700M MAU) | Free tier ≈ 30 RPM, 1K requests/day, small tokens/minute (third-party figure, Apr 2026)  |
+| Evaluator      | Groq `openai/gpt-oss-120b` (production)     | Apache-2.0                                                | Free tier 30 RPM, 1K RPD, 8K TPM, 200K TPD (Groq docs)                                   |
+| Speech-to-text | faster-whisper 1.2.1 + Whisper `small.en`   | MIT / MIT                                                 | CPU int8 ≈ 1.5 GB RAM; ~8× real time on 8 threads (project benchmark)                    |
+| Text-to-speech | Piper 1.8.0 + `en_US-ljspeech-medium` voice | GPL-3.0 engine (separate process) / public-domain dataset | Faster than real time on CPU; avoid voices whose dataset licence is restrictive (lessac) |
+| Code execution | Judge0 CE ≥ 1.13.1                          | GPL-3.0 (separate network service)                        | Docker + privileged isolate sandbox on a dedicated host                                  |
+| Code editor    | Monaco Editor 0.56.0                        | MIT                                                       | Bundled locally (CSP forbids CDNs); dompurify pinned to 3.4.16 via `overrides`           |
 
-Interview reports keep three independent sections, each with its own provenance (provider, model,
-version, time) and its own dispute path:
+Groq is a **proprietary hosted service**: the model weights are open, but requests go to Groq
+under Groq's terms and data handling. Candidates see the provider label (`groq:<model>`) before
+consenting, with the notice that sent requests cannot be recalled. For no third-party processing,
+point `openai-compatible` at a self-hosted server. Free-tier limits change; the account's limits
+page is authoritative. The free tier suits development and small pilots (about 25 LLM calls per
+interview), not concurrent production load.
 
-1. Technical rubric scores (anchors only) — numeric, computed by the backend.
-2. Language feedback — qualitative; does not change technical scores.
-3. Observable presentation signals — event timelines with explicit limitations; no inferred traits.
+## Data minimisation and prompt injection
 
-## Phase 4: interview system contracts
+- Resume text: contact details removed at upload-read time (`redactContactDetails`), then names
+  (the account display name), credentials, government ids and labelled personal fields
+  (`redactForAi`), bounded to 12,000 characters. Answers and code go through `redactForAi`
+  before every call. This is best-effort, not anonymisation.
+- No user ids, emails, account data or the brief's confidential problem/solution are sent.
+- The system message is fixed text; all candidate content travels as one JSON document under
+  `data` (JSON escaping prevents breaking out of it) with instructions to treat it as data.
+- Outputs are validated strictly; evidence quotes must be verbatim substrings of what was sent;
+  the server enforces the interview policy, so an injected instruction cannot change a score or
+  skip a rule. Text that looks like an injection attempt is flagged in the report for human
+  review (`looksLikePromptInjection`, heuristic).
+- Logs carry capability, provider, model, prompt version, latency, attempts, token counts and
+  error codes only — never prompts, resume text, transcripts or code.
 
-Planned flow: founder invitation → candidate acceptance (consents) → live interview room
-(candidate webcam + AI avatar) → spoken introduction → resume-based technical questions → spoken
-answers → speech-to-text → adaptive follow-up → separate analyses → final report. Phase 4 builds
-none of the room, avatar, speech, video or scoring; it fixes the data contracts below.
+## Adding a provider
 
-| Contract                        | Where                                                                                   | Notes                                                                                                                                                |
-| ------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Resume metadata and status      | `shared/resume.ts` (`ResumeMetadata`, `ResumeExtraction`)                               | Version never reused; `succeeded` or `no_text`; extractor version and text SHA-256 recorded                                                          |
-| Resume reference on a session   | `shared/interview.ts` (`ResumeRef`, `InterviewResumeBinding`)                           | `resume_based` with `{resumeVersion, textSha256, extractorVersion}` or `profile_only` with the reason                                                |
-| Readiness check before starting | `resumeInterviewReadiness`, `resolveResumeBinding`                                      | No resume, no text or no consent → profile-only questions; never a blocked candidate                                                                 |
-| Question-generation input       | `buildResumeQuestionInput` (`src/interviews/`)                                          | Redacted resume text (emails, phones, links removed), self-reported skills/projects, required skills. No ids, names, links or brief problem/solution |
-| Output validation               | `src/ai/contracts.ts`                                                                   | Strict zod schemas; `checkQuestionEvidence` rejects questions whose quote is not an exact substring of the resume text                               |
-| Analysis categories             | `TechnicalCorrectness`, `LanguageFeedback`, `AudioCharacteristics`, `VideoObservations` | Only technical correctness can score (`technicalScoringInputs`); the others carry `affectsTechnicalScore: false`                                     |
-| Media and analysis consent      | `InterviewMediaConsent` (`interview-media-v1`)                                          | Required: webcam, microphone, technical analysis. Optional: recording, language, audio, video analysis — declining skips them, never penalises       |
-
-Only `ResumeService.readForInterviewProcessing` releases resume content outside the candidate's
-own routes, and only after re-checking consent and extraction status. No HTTP route exposes it.
-
-**Audio and video observations are not evidence** of cheating, nervousness, confidence or
-dishonesty and never change technical scores (`OBSERVATION_LIMITATIONS_NOTICE`).
-
-## Model and tool policy
-
-Every AI model or AI-related tool adopted in later phases must be free, open-source, reasonably
-well-performing and preferably self-hostable. Before registering a provider, record its exact
-model identifier, licence and whether the licence permits commercial use. The user's fine-tuned
-question-generation and follow-up APIs will be supplied later and plug in as adapters for
-`question_generation` and `follow_up_generation`.
-
-The only new third-party component in Phase 4 is **pdf.js** (`pdfjs-dist` 6.3.289, Apache-2.0,
-commercial use permitted), used for resume text extraction. It is not an AI model.
+1. Implement `CapabilityAdapter`s (or reuse `openai-compatible`), register a factory.
+2. Record licence, hosting terms and limits in this file.
+3. Add tests against a local HTTP stub (see `test/ai/openai-compatible.test.ts`).
+4. Calibrate on human-reviewed interviews before trusting scores.

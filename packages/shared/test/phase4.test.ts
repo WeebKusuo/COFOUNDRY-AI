@@ -1,23 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ANALYSIS_CATEGORIES,
-  NON_SCORING_CATEGORIES,
   briefPublishGaps,
   compensationDraftFromTerms,
   compensationSummary,
   emptyBriefDraft,
   formatInr,
   hasSkillGap,
-  missingRequiredMediaConsents,
-  permittedAnalyses,
   redactContactDetails,
   resumeInterviewReadiness,
   sanitizeResumeFilename,
-  technicalScoringInputs,
   toCompensationTerms,
   type BriefDraftFields,
   type CandidateResumeData,
-  type InterviewAnalysis,
 } from '../src/index.js';
 
 const LONG = 'x'.repeat(60);
@@ -225,89 +219,5 @@ describe('resume helpers', () => {
         resume: { ...resume, extraction: { ...resume.extraction, status: 'no_text' } },
       }),
     ).toEqual({ ready: false, reason: 'no_text' });
-  });
-});
-
-describe('interview contracts', () => {
-  const items = {
-    webcam: true,
-    microphone: true,
-    recording: false,
-    technical_analysis: true,
-    language_analysis: false,
-    audio_analysis: true,
-    video_analysis: false,
-  };
-
-  it('requires webcam, microphone and technical analysis; other analyses are optional', () => {
-    expect(missingRequiredMediaConsents(null)).toEqual([
-      'webcam',
-      'microphone',
-      'technical_analysis',
-    ]);
-    expect(missingRequiredMediaConsents({ items })).toEqual([]);
-    expect(missingRequiredMediaConsents({ items: { ...items, microphone: false } })).toEqual([
-      'microphone',
-    ]);
-    expect(permittedAnalyses({ items })).toEqual([
-      'technical_correctness',
-      'audio_characteristics',
-    ]);
-    expect(permittedAnalyses({ items: { ...items, microphone: false } })).toEqual([
-      'technical_correctness',
-    ]);
-    expect(permittedAnalyses(null)).toEqual([]);
-  });
-
-  it('keeps audio, video and language analyses out of technical scoring', () => {
-    expect(ANALYSIS_CATEGORIES.filter((c) => !NON_SCORING_CATEGORIES.has(c))).toEqual([
-      'technical_correctness',
-    ]);
-    const meta = { providerId: 'p', model: 'm', adapterVersion: '1', analysedAt: '' };
-    const analyses: InterviewAnalysis[] = [
-      {
-        ...meta,
-        category: 'technical_correctness',
-        questionId: 'Q1',
-        dimensions: { correctness: 3 },
-        strengths: [],
-        gaps: [],
-        uncertainties: [],
-        rubricVersion: 'r',
-      },
-      {
-        ...meta,
-        category: 'language_feedback',
-        questionId: 'Q1',
-        detectedLanguage: 'en',
-        comments: [],
-        affectsTechnicalScore: false,
-      },
-      {
-        ...meta,
-        category: 'audio_characteristics',
-        questionId: 'Q1',
-        measurements: {
-          speechDurationMs: 1,
-          wordsPerMinute: null,
-          pauseCount: 0,
-          longestPauseMs: 0,
-          silenceRatio: 0,
-        },
-        affectsTechnicalScore: false,
-      },
-      {
-        ...meta,
-        category: 'video_observations',
-        events: [{ type: 'face_not_visible', startMs: 0, endMs: 10 }],
-        affectsTechnicalScore: false,
-      },
-    ];
-    expect(technicalScoringInputs(analyses).map((a) => a.category)).toEqual([
-      'technical_correctness',
-    ]);
-    expect(() =>
-      technicalScoringInputs([{ ...meta, category: 'confidence' } as unknown as InterviewAnalysis]),
-    ).toThrow(/Unknown analysis category/);
   });
 });

@@ -14,22 +14,57 @@ import { FounderProfilePage } from '../features/profile/FounderProfilePage';
 import { BriefsListPage } from '../features/briefs/BriefsListPage';
 import { BriefEditorPage } from '../features/briefs/BriefEditorPage';
 import { RecommendationsPage } from '../features/recommendations/RecommendationsPage';
+import { InterviewListPage } from '../features/interviews/InterviewListPage';
+import { CandidateInterviewPage } from '../features/interviews/CandidateInterviewPage';
+import { FounderInterviewPage } from '../features/interviews/FounderInterviewPage';
+import { PreparePage } from '../features/interviews/PreparePage';
+import { InterviewRoomPage } from '../features/interviews/InterviewRoom';
+import { CandidateInboxPage } from '../features/collaboration/CandidateInboxPage';
+import { RequestDetailPage, SentRequestsPage } from '../features/collaboration/RequestPages';
+import { MatchDetailPage, MatchListPage } from '../features/collaboration/MatchPages';
+import { SafetyPage } from '../features/safety/SafetyPage';
+import { CaseDetailPage, CaseQueuePage } from '../features/safety/ModerationPages';
 import type { ReactElement } from 'react';
 import type { UserRole } from '@cofoundry/shared';
 
 /** Screens built so far; every other nav destination renders the "not available yet" state. */
 const SCREENS: Partial<Record<UserRole, Record<string, ReactElement>>> = {
-  candidate: { profile: <CandidateProfilePage /> },
+  candidate: {
+    profile: <CandidateProfilePage />,
+    inbox: <CandidateInboxPage />,
+    matches: <MatchListPage viewer="candidate" />,
+    account: <SafetyPage />,
+  },
   founder: {
     profile: <FounderProfilePage />,
     briefs: <BriefsListPage />,
     candidates: <RecommendationsPage />,
+    interviews: <InterviewListPage viewer="founder" />,
+    requests: <SentRequestsPage />,
+    matches: <MatchListPage viewer="founder" />,
+    account: <SafetyPage />,
+  },
+  moderator: {
+    cases: <CaseQueuePage />,
   },
 };
 
 /** Detail routes below a nav destination (not nav items themselves). */
 const DETAIL_ROUTES: Partial<Record<UserRole, RouteObject[]>> = {
-  founder: [{ path: 'briefs/:briefId', element: <BriefEditorPage /> }],
+  founder: [
+    { path: 'briefs/:briefId', element: <BriefEditorPage /> },
+    { path: 'interviews/:interviewId', element: <FounderInterviewPage /> },
+    { path: 'requests/:requestId', element: <RequestDetailPage /> },
+    { path: 'matches/:matchId', element: <MatchDetailPage /> },
+  ],
+  candidate: [
+    { path: 'inbox/:interviewId', element: <CandidateInterviewPage /> },
+    { path: 'interviews/:interviewId/prepare', element: <PreparePage /> },
+    { path: 'interviews/:interviewId/room', element: <InterviewRoomPage /> },
+    { path: 'requests/:requestId', element: <RequestDetailPage /> },
+    { path: 'matches/:matchId', element: <MatchDetailPage /> },
+  ],
+  moderator: [{ path: 'cases/:caseId', element: <CaseDetailPage /> }],
 };
 
 /**

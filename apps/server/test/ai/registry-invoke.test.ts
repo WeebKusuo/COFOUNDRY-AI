@@ -4,12 +4,15 @@ import {
   AI_CAPABILITIES,
   AiConfigError,
   AiProviderRegistry,
-  OBSERVABLE_VIDEO_EVENTS,
+  ProviderCallError,
+  backoffDelay,
+  worstCaseCallMs,
   createAiRegistry,
   invokeCapability,
   type AiLogger,
   type CapabilityAdapter,
-  type TechnicalEvaluationInput,
+  type CodeReviewInput,
+  type ConsentProof,
 } from '../../src/ai/index.js';
 
 function captureLogger() {
@@ -21,98 +24,156 @@ function captureLogger() {
   return { logger, entries };
 }
 
-const SECRET_ANSWER = 'my private answer text 4f9c';
-const evalInput: TechnicalEvaluationInput = {
-  questionId: 'A1',
-  question: 'Design an API…',
-  rubricVersion: 'rubric-v3.0',
-  expectedPoints: ['idempotency'],
-  answer: SECRET_ANSWER,
+const SECRET_CODE = 'function secret() { return "4f9c-private"; }';
+const consent: ConsentProof = {
+  purpose: 'assessment',
+  consentRecordId: 'c1',
+  policyVersion: 'interview-ai-v1',
 };
+const reviewInput = {
+  code: SECRET_CODE,
+} as unknown as CodeReviewInput;
 const scoreSchema = z.strictObject({ score: z.number().int().min(0).max(4) });
+const noSleep = async () => undefined;
 
-function fakeEvaluator(
-  run: CapabilityAdapter<'technical_evaluation'>['run'],
-): CapabilityAdapter<'technical_evaluation'> {
+function fakeReviewer(
+  run: CapabilityAdapter<'code_review'>['run'],
+): CapabilityAdapter<'code_review'> {
   return {
     descriptor: {
-      capability: 'technical_evaluation',
+      capability: 'code_review',
       providerId: 'test-double',
       model: 'test-model-1',
       adapterVersion: '1',
+      promptVersion: 'code-review-v1',
     },
     run,
   };
 }
 
+const call = (
+  registry: AiProviderRegistry,
+  opts: Partial<Parameters<typeof invokeCapability>[3]> = {},
+) =>
+  invokeCapability(registry, 'code_review', reviewInput, {
+    timeoutMs: 1000,
+    outputSchema: scoreSchema,
+    logger: captureLogger().logger,
+    consent,
+    sleep: noSleep,
+    ...opts,
+  } as Parameters<typeof invokeCapability>[3]);
+
 describe('createAiRegistry', () => {
+  const settings = {
+    provider: 'disabled',
+    interviewerModel: null,
+    evaluatorModel: null,
+    apiKey: null,
+    baseUrl: null,
+  };
+
   it('defaults every capability to the disabled adapter', () => {
-    const registry = createAiRegistry({ provider: 'disabled', model: null, apiKey: null });
+    const registry = createAiRegistry(settings);
     expect(registry.describe().map((d) => d.capability)).toEqual([...AI_CAPABILITIES]);
     for (const c of AI_CAPABILITIES) expect(registry.isEnabled(c)).toBe(false);
+    expect(registry.allEnabled()).toBe(false);
+  });
+
+  it('has no video, emotion or audio-characteristics capability', () => {
+    for (const c of AI_CAPABILITIES)
+      expect(c).not.toMatch(/video|emotion|confiden|nervous|cheat|face|gaze/);
   });
 
   it('fails on an unknown provider label, naming the known ones', () => {
-    expect(() => createAiRegistry({ provider: 'gpt-magic', model: 'x', apiKey: 'k' })).toThrow(
-      AiConfigError,
+    expect(() => createAiRegistry({ ...settings, provider: 'gpt-magic' })).toThrow(AiConfigError);
+    expect(() => createAiRegistry({ ...settings, provider: 'gpt-magic' })).toThrow(
+      /Known providers: disabled, groq, mock, openai-compatible/,
     );
-    expect(() => createAiRegistry({ provider: 'gpt-magic', model: 'x', apiKey: 'k' })).toThrow(
-      /Known providers: disabled/,
-    );
+  });
+
+  it('builds Groq adapters with separately configured interviewer and evaluator models', () => {
+    const registry = createAiRegistry({
+      ...settings,
+      provider: 'groq',
+      interviewerModel: 'llama-3.3-70b-versatile',
+      evaluatorModel: 'openai/gpt-oss-120b',
+      apiKey: 'gsk_secret',
+    });
+    expect(registry.get('interview_turn').descriptor).toMatchObject({
+      providerId: 'groq',
+      model: 'llama-3.3-70b-versatile',
+    });
+    expect(registry.get('answer_evaluation').descriptor).toMatchObject({
+      providerId: 'groq',
+      model: 'openai/gpt-oss-120b',
+    });
+    expect(registry.disclosedProviders()).toEqual([
+      'groq:llama-3.3-70b-versatile',
+      'groq:openai/gpt-oss-120b',
+    ]);
+    expect(JSON.stringify(registry.describe())).not.toContain('gsk_secret');
+  });
+
+  it('refuses a real provider without key or models, and plain http to a remote host', () => {
+    expect(() => createAiRegistry({ ...settings, provider: 'groq' })).toThrow(AiConfigError);
+    expect(() =>
+      createAiRegistry({
+        ...settings,
+        provider: 'openai-compatible',
+        baseUrl: 'http://10.0.0.5:8000/v1',
+        apiKey: 'k',
+        interviewerModel: 'm',
+        evaluatorModel: 'm',
+        allowInsecureHttp: true,
+      }),
+    ).toThrow(/https/);
   });
 
   it('rejects an adapter registered under the wrong capability', () => {
-    const wrong = fakeEvaluator(async () => ({ output: {} }));
+    const wrong = fakeReviewer(async () => ({ output: {} }));
     expect(
       () =>
         new AiProviderRegistry({
-          language_evaluation: wrong as unknown as CapabilityAdapter<'language_evaluation'>,
+          answer_evaluation: wrong as unknown as CapabilityAdapter<'answer_evaluation'>,
         }),
     ).toThrow(AiConfigError);
-  });
-
-  it('describe() exposes no credentials', () => {
-    const registry = createAiRegistry(
-      { provider: 'custom', model: 'm', apiKey: 'sk-secret' },
-      { custom: () => ({ technical_evaluation: fakeEvaluator(async () => ({ output: {} })) }) },
-    );
-    expect(JSON.stringify(registry.describe())).not.toContain('sk-secret');
-    expect(registry.isEnabled('technical_evaluation')).toBe(true);
   });
 });
 
 describe('invokeCapability', () => {
-  it('reports disabled providers as a typed failure, never a fabricated result', async () => {
-    const registry = new AiProviderRegistry();
-    const { logger } = captureLogger();
-    const result = await invokeCapability(registry, 'technical_evaluation', evalInput, {
-      timeoutMs: 1000,
-      outputSchema: scoreSchema,
-      logger,
+  it('requires interview consent and never calls the adapter without it', async () => {
+    let called = false;
+    const registry = new AiProviderRegistry({
+      code_review: fakeReviewer(async () => ((called = true), { output: { score: 1 } })),
     });
+    const result = await call(registry, { consent: null });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('consent_missing');
+    expect(called).toBe(false);
+  });
+
+  it('reports disabled providers as a typed failure, never a fabricated result', async () => {
+    const result = await call(new AiProviderRegistry());
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('disabled');
   });
 
-  it('returns validated output with model metadata and token usage', async () => {
+  it('returns validated output with model, prompt version, attempts and token usage', async () => {
     const registry = new AiProviderRegistry({
-      technical_evaluation: fakeEvaluator(async () => ({
+      code_review: fakeReviewer(async () => ({
         output: { score: 3 },
         usage: { inputTokens: 120, outputTokens: 30 },
       })),
     });
-    const { logger } = captureLogger();
-    const result = await invokeCapability(registry, 'technical_evaluation', evalInput, {
-      timeoutMs: 1000,
-      outputSchema: scoreSchema,
-      logger,
-    });
-    expect(result).toMatchObject({
+    expect(await call(registry)).toMatchObject({
       ok: true,
       value: { score: 3 },
       meta: {
         providerId: 'test-double',
         model: 'test-model-1',
+        promptVersion: 'code-review-v1',
+        attempts: 1,
         inputTokens: 120,
         outputTokens: 30,
       },
@@ -123,34 +184,91 @@ describe('invokeCapability', () => {
     [{ score: 5 }],
     [{ score: -1 }],
     [{ score: 2.5 }],
-    [{ score: 3, extra: true }],
+    [{ score: 3, overallScore: 100 }],
     ['nope'],
-  ])('rejects invalid output %j without clamping', async (output) => {
+  ])(
+    'rejects invalid output %j without clamping (the model cannot add an aggregate)',
+    async (output) => {
+      const registry = new AiProviderRegistry({
+        code_review: fakeReviewer(async () => ({ output })),
+      });
+      const result = await call(registry);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe('invalid_output');
+    },
+  );
+
+  it('retries transient failures with backoff and succeeds', async () => {
+    let n = 0;
+    const delays: number[] = [];
     const registry = new AiProviderRegistry({
-      technical_evaluation: fakeEvaluator(async () => ({ output })),
+      code_review: fakeReviewer(async () => {
+        n += 1;
+        if (n === 1) throw new ProviderCallError('upstream_failed', '503');
+        if (n === 2) throw new ProviderCallError('rate_limited', '429', { retryAfterMs: 1500 });
+        return { output: { score: 2 } };
+      }),
     });
-    const { logger } = captureLogger();
-    const result = await invokeCapability(registry, 'technical_evaluation', evalInput, {
-      timeoutMs: 1000,
-      outputSchema: scoreSchema,
-      logger,
+    const result = await call(registry, {
+      retry: { attempts: 3, baseDelayMs: 100, maxDelayMs: 5000 },
+      sleep: async (ms: number) => void delays.push(ms),
+    });
+    expect(result.ok).toBe(true);
+    expect(result.meta.attempts).toBe(3);
+    // 100 ms backoff, then the provider's Retry-After (1.5 s) wins over 200 ms.
+    expect(delays).toEqual([100, 1500]);
+  });
+
+  it('stops retrying when Retry-After exceeds the maximum delay', async () => {
+    const registry = new AiProviderRegistry({
+      code_review: fakeReviewer(async () => {
+        throw new ProviderCallError('rate_limited', '429', { retryAfterMs: 60_000 });
+      }),
+    });
+    const result = await call(registry, {
+      retry: { attempts: 3, baseDelayMs: 100, maxDelayMs: 5000 },
     });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.code).toBe('invalid_output');
+    if (!result.ok) expect(result.error.code).toBe('rate_limited');
+    expect(result.meta.attempts).toBe(1);
+  });
+
+  it('does not retry non-transient failures', async () => {
+    let n = 0;
+    const registry = new AiProviderRegistry({
+      code_review: fakeReviewer(async () => {
+        n += 1;
+        throw new ProviderCallError('disabled', 'off');
+      }),
+    });
+    await call(registry, { retry: { attempts: 3, baseDelayMs: 1, maxDelayMs: 1 } });
+    expect(n).toBe(1);
+  });
+
+  it('treats a failed semantic validation as invalid output and retries it', async () => {
+    let n = 0;
+    const registry = new AiProviderRegistry({
+      code_review: fakeReviewer(async () => ({ output: { score: (n += 1) } })),
+    });
+    const result = await call(registry, {
+      validate: (v: unknown) => ((v as { score: number }).score < 2 ? 'too_low' : null),
+      retry: { attempts: 3, baseDelayMs: 1, maxDelayMs: 1 },
+    });
+    expect(result).toMatchObject({ ok: true, value: { score: 2 }, meta: { attempts: 2 } });
+  });
+
+  it('computes exponential backoff', () => {
+    const p = { attempts: 5, baseDelayMs: 100, maxDelayMs: 1000 };
+    expect([1, 2, 3, 4, 5].map((a) => backoffDelay(p, a))).toEqual([100, 200, 400, 800, 1000]);
   });
 
   it('times out a slow provider even if it ignores the abort signal', async () => {
     const registry = new AiProviderRegistry({
-      technical_evaluation: fakeEvaluator(
+      code_review: fakeReviewer(
         () => new Promise((resolve) => setTimeout(() => resolve({ output: { score: 1 } }), 500)),
       ),
     });
-    const { logger } = captureLogger();
-    const result = await invokeCapability(registry, 'technical_evaluation', evalInput, {
-      timeoutMs: 50,
-      outputSchema: scoreSchema,
-      logger,
-    });
+    const result = await call(registry, { timeoutMs: 50 });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('timeout');
     expect(result.meta.latencyMs).toBeLessThan(400);
@@ -158,7 +276,7 @@ describe('invokeCapability', () => {
 
   it('cancels when the outer signal aborts (consent withdrawn mid-call)', async () => {
     const registry = new AiProviderRegistry({
-      technical_evaluation: fakeEvaluator(
+      code_review: fakeReviewer(
         (_input, ctx) =>
           new Promise((_resolve, reject) =>
             ctx.signal.addEventListener('abort', () => reject(ctx.signal.reason)),
@@ -166,13 +284,7 @@ describe('invokeCapability', () => {
       ),
     });
     const outer = new AbortController();
-    const { logger } = captureLogger();
-    const pending = invokeCapability(registry, 'technical_evaluation', evalInput, {
-      timeoutMs: 5000,
-      outputSchema: scoreSchema,
-      logger,
-      signal: outer.signal,
-    });
+    const pending = call(registry, { timeoutMs: 5000, signal: outer.signal });
     outer.abort();
     const result = await pending;
     expect(result.ok).toBe(false);
@@ -181,16 +293,12 @@ describe('invokeCapability', () => {
 
   it('maps unexpected adapter exceptions to upstream_failed without leaking messages', async () => {
     const registry = new AiProviderRegistry({
-      technical_evaluation: fakeEvaluator(async () => {
+      code_review: fakeReviewer(async () => {
         throw new Error('401 invalid key sk-abc');
       }),
     });
     const { logger, entries } = captureLogger();
-    const result = await invokeCapability(registry, 'technical_evaluation', evalInput, {
-      timeoutMs: 1000,
-      outputSchema: scoreSchema,
-      logger,
-    });
+    const result = await call(registry, { logger });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe('upstream_failed');
@@ -199,75 +307,28 @@ describe('invokeCapability', () => {
     expect(JSON.stringify(entries)).not.toContain('sk-abc');
   });
 
-  it('logs metadata only — never the candidate answer', async () => {
+  it('logs metadata only — never candidate code or answers', async () => {
     const registry = new AiProviderRegistry({
-      technical_evaluation: fakeEvaluator(async (input) => ({
-        output: { score: input.answer.length > 0 ? 2 : 0 },
-      })),
+      code_review: fakeReviewer(async () => ({ output: { score: 2 } })),
     });
     const { logger, entries } = captureLogger();
-    await invokeCapability(registry, 'technical_evaluation', evalInput, {
-      timeoutMs: 1000,
-      outputSchema: scoreSchema,
-      logger,
-    });
+    await call(registry, { logger });
     expect(entries).toHaveLength(1);
-    expect(JSON.stringify(entries)).not.toContain(SECRET_ANSWER);
-    expect(entries[0]?.obj).toMatchObject({
-      capability: 'technical_evaluation',
-      providerId: 'test-double',
-    });
+    expect(JSON.stringify(entries)).not.toContain('4f9c-private');
+    expect(entries[0]?.obj).toMatchObject({ capability: 'code_review', providerId: 'test-double' });
   });
 });
 
-describe('media consent', () => {
-  const audioAdapter: CapabilityAdapter<'speech_analysis'> = {
-    descriptor: {
-      capability: 'speech_analysis',
-      providerId: 'test-stt',
-      model: 'stt-1',
-      adapterVersion: '1',
-    },
-    run: async () => ({ output: { text: 'hello' } }),
-  };
-  const input = { audio: { mimeType: 'audio/webm', durationMs: 1000, bytes: new Uint8Array(4) } };
-  const schema = z.strictObject({ text: z.string() });
-
-  it('refuses audio analysis without interview_audio consent and never calls the adapter', async () => {
-    let called = false;
-    const registry = new AiProviderRegistry({
-      speech_analysis: {
-        ...audioAdapter,
-        run: async () => ((called = true), { output: { text: '' } }),
-      },
-    });
-    const { logger } = captureLogger();
-    const result = await invokeCapability(registry, 'speech_analysis', input, {
-      timeoutMs: 1000,
-      outputSchema: schema,
-      logger,
-      consent: { purpose: 'assessment', consentRecordId: 'c1', policyVersion: 'v' },
-    });
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.code).toBe('consent_missing');
-    expect(called).toBe(false);
-  });
-
-  it('runs audio analysis with matching consent', async () => {
-    const registry = new AiProviderRegistry({ speech_analysis: audioAdapter });
-    const { logger } = captureLogger();
-    const result = await invokeCapability(registry, 'speech_analysis', input, {
-      timeoutMs: 1000,
-      outputSchema: schema,
-      logger,
-      consent: { purpose: 'interview_audio', consentRecordId: 'c1', policyVersion: 'v' },
-    });
-    expect(result.ok).toBe(true);
-  });
-
-  it('limits video signals to observable events only', () => {
-    for (const event of OBSERVABLE_VIDEO_EVENTS) {
-      expect(event).not.toMatch(/cheat|confiden|nervous|emotion|honest|lie/);
-    }
+describe('worstCaseCallMs', () => {
+  it('adds every attempt timeout and every capped backoff', () => {
+    expect(worstCaseCallMs(20_000, { attempts: 3, baseDelayMs: 1_000, maxDelayMs: 20_000 })).toBe(
+      3 * 20_000 + 1_000 + 2_000,
+    );
+    expect(worstCaseCallMs(10_000, { attempts: 4, baseDelayMs: 5_000, maxDelayMs: 8_000 })).toBe(
+      4 * 10_000 + 5_000 + 8_000 + 8_000,
+    );
+    expect(worstCaseCallMs(5_000, { attempts: 1, baseDelayMs: 1_000, maxDelayMs: 1_000 })).toBe(
+      5_000,
+    );
   });
 });

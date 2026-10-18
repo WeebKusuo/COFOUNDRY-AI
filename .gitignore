@@ -15,3 +15,8 @@ test-results/
 playwright-report/
 # Private runtime data (uploaded resumes in development)
 apps/server/var/
+# Python speech service (services/speech)
+__pycache__/
+*.pyc
+services/speech/.venv/
+services/speech/models/

@@ -20,9 +20,12 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
     trace: 'retain-on-failure',
+    // Fake microphone (a test tone) and fake camera (a test pattern) for the interview: the
+    // camera is only shown to the candidate as a local self-view.
+    permissions: ['microphone', 'camera'],
     launchOptions: {
       ...(executablePath ? { executablePath } : {}),
-      args: extraArgs,
+      args: [...extraArgs, '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'],
     },
   },
   projects: [

@@ -1,0 +1,7 @@
+# CoFoundry speech service — Python 3.9+ (tested with 3.13).
+# faster-whisper (MIT) + CTranslate2; Whisper weights (MIT) are downloaded on first start.
+faster-whisper==1.2.1
+# faster-whisper 1.2.1 calls av.open(..., metadata_errors=...), which PyAV 16+ removed.
+av>=11,<16
+# Piper TTS (GPL-3.0). Invoked as a separate process (python -m piper), never imported.
+piper-tts==1.8.0

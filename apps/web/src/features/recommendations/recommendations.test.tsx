@@ -162,6 +162,8 @@ function backend(options: {
   briefs?: BriefOwnerSummary[];
   latest?: () => { status: number; body: unknown };
   search?: () => { status: number; body: unknown };
+  interviews?: unknown[];
+  invite?: () => { status: number; body: unknown };
 }) {
   const calls: Array<{ method: string; path: string; headers: Record<string, string> }> = [];
   const routes = (
@@ -176,6 +178,15 @@ function backend(options: {
         status: 200,
         body: { data: options.briefs ?? [brief()], nextCursor: null, requestId: 'r' },
       };
+    }
+    if (path === '/interviews' && method === 'GET') {
+      return {
+        status: 200,
+        body: { data: options.interviews ?? [], nextCursor: null, requestId: 'r' },
+      };
+    }
+    if (path === '/interviews' && method === 'POST') {
+      return (options.invite ?? (() => ok({ id: 'f'.repeat(24), status: 'invited' }, 201)))();
     }
     if (path === `/startups/${BRIEF_ID}/recommendations`) {
       if (method === 'GET')
@@ -256,15 +267,45 @@ describe('founder recommendations dashboard', () => {
     expect(card).not.toHaveTextContent('@');
   });
 
-  it('labels Invite to interview as unavailable instead of pretending to send', async () => {
+  it('invites a candidate after confirmation, sending the batch and an Idempotency-Key', async () => {
     const api = backend({ latest: () => ok(batch()) });
     installFakeApi({ user: founder, routes: api.routes });
     renderRoute('/founder/candidates');
-    const card = await screen.findByRole('article', { name: /Dev/ });
-    const invite = within(card).getByRole('button', { name: 'Invite to interview' });
-    expect(invite).toBeDisabled();
-    expect(invite).toHaveAccessibleDescription(/interview invitations arrive in a later phase/);
-    expect(api.calls.some((c) => c.path.startsWith('/interviews'))).toBe(false);
+    const card = (await screen.findByRole('article', { name: /Dev, score/ })) as HTMLElement;
+    await userEvent.click(within(card).getByRole('button', { name: 'Invite to interview' }));
+    expect(within(card).getByText(/They get 7 days to accept/)).toBeInTheDocument();
+    await userEvent.click(within(card).getByRole('button', { name: 'Send invitation' }));
+    expect(await within(card).findByText('Invitation sent to Dev.')).toBeInTheDocument();
+    const post = api.calls.find((c) => c.method === 'POST' && c.path === '/interviews')!;
+    expect(post.headers['Idempotency-Key']).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('shows the existing interview instead of a second invite, and server refusals', async () => {
+    const api = backend({
+      latest: () => ok(batch()),
+      interviews: [
+        {
+          id: 'f'.repeat(24),
+          candidateUserId: 'c'.repeat(24),
+          status: 'accepted',
+          evaluationStatus: 'none',
+        },
+      ],
+      invite: () => fail(409, 'STALE_RECOMMENDATION', 'These results are out of date.'),
+    });
+    installFakeApi({ user: founder, routes: api.routes });
+    renderRoute('/founder/candidates');
+    const dev = (await screen.findByRole('article', { name: /Dev, score/ })) as HTMLElement;
+    expect(await within(dev).findByText('Accepted')).toBeInTheDocument();
+    expect(
+      within(dev).queryByRole('button', { name: 'Invite to interview' }),
+    ).not.toBeInTheDocument();
+    const isha = (await screen.findByRole('article', { name: /Isha/ })) as HTMLElement;
+    await userEvent.click(within(isha).getByRole('button', { name: 'Invite to interview' }));
+    await userEvent.click(within(isha).getByRole('button', { name: 'Send invitation' }));
+    expect(await within(isha).findByRole('alert')).toHaveTextContent(
+      /out of date\. Run a new search/,
+    );
   });
 
   it('warns when results expired and offers a new search', async () => {

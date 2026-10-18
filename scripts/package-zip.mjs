@@ -26,6 +26,12 @@ const EXCLUDED_DIRS = new Set([
   'playwright-report',
   // Private runtime data, e.g. uploaded resumes (apps/server/var/resumes).
   'var',
+  // Python speech service: virtualenvs, caches and downloaded models are never packaged.
+  '__pycache__',
+  '.venv',
+  'venv',
+  '.pytest_cache',
+  'models',
 ]);
 const EXCLUDED_FILES = [
   /^\.env$/,

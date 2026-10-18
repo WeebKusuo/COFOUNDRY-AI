@@ -84,6 +84,12 @@ export const WORKSPACES: Record<UserRole, WorkspaceDefinition> = {
         icon: Handshake,
         purpose: 'Agreed terms, the trial sprint, submission and review.',
       },
+      {
+        path: 'account',
+        label: 'Safety & account',
+        icon: ShieldCheck,
+        purpose: 'People you blocked, and your reports and correction requests.',
+      },
     ],
   },
   candidate: {
@@ -121,7 +127,7 @@ export const WORKSPACES: Record<UserRole, WorkspaceDefinition> = {
         path: 'account',
         label: 'Safety & account',
         icon: ShieldCheck,
-        purpose: 'Blocks, reports, corrections, data export and account deletion.',
+        purpose: 'People you blocked, and your reports and correction requests.',
       },
     ],
   },

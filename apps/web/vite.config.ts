@@ -21,5 +21,7 @@ export default defineConfig({
     sourcemap: 'hidden',
     // Never inline assets as data: URIs — the production CSP allows fonts from 'self' only.
     assetsInlineLimit: 0,
+    // The Monaco editor chunk (~2.6 MB, ~0.7 MB gzip) is loaded lazily only in the coding round.
+    chunkSizeWarningLimit: 3000,
   },
 });

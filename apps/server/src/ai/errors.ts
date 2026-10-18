@@ -3,10 +3,13 @@ import type { ProviderErrorCode } from './types.js';
 /** Thrown by adapters/transports; mapped to a ProviderResult error by invokeCapability. */
 export class ProviderCallError extends Error {
   readonly code: ProviderErrorCode;
-  constructor(code: ProviderErrorCode, message: string) {
+  /** Provider-suggested wait before retrying (429 Retry-After), when known. */
+  readonly retryAfterMs: number | undefined;
+  constructor(code: ProviderErrorCode, message: string, options: { retryAfterMs?: number } = {}) {
     super(message);
     this.name = 'ProviderCallError';
     this.code = code;
+    this.retryAfterMs = options.retryAfterMs;
   }
 }
 

@@ -15,7 +15,14 @@ import type { ResumeService } from '../../resumes/service.js';
 import { createResumeRouter } from './resumes.js';
 import type { RecommendationService } from '../../recommendations/service.js';
 import { createRecommendationRouter } from './recommendations.js';
+import type { InterviewService } from '../../interviews/service.js';
+import { createInterviewRouter, type InterviewLimiters } from './interviews.js';
 import type { RequestHandler } from 'express';
+import type { CollaborationService } from '../../collaboration/requests.js';
+import type { SprintService } from '../../collaboration/sprints.js';
+import type { SafetyService } from '../../safety/service.js';
+import { createCollaborationRouter } from './collaboration.js';
+import { createSafetyRouter } from './safety.js';
 
 export interface V1Options {
   auth: AuthService;
@@ -24,6 +31,11 @@ export interface V1Options {
   idempotency: IdempotencyStore;
   resumes: ResumeService;
   recommendations: RecommendationService;
+  interviews: InterviewService;
+  /** Phases 11-14 (absent only in narrow tests that build a partial app). */
+  collaboration?: { requests: CollaborationService; sprints: SprintService };
+  safety?: SafetyService;
+  interviewLimiters?: Partial<InterviewLimiters>;
   /** Override the discovery search limiter (tests). */
   searchLimiter?: RequestHandler;
   /** Override the resume upload limiter (tests). */
@@ -56,11 +68,33 @@ export function createV1Router(options: V1Options): Router {
     ),
   );
   router.use(createProfileRouter(options.profiles));
-  router.use(createBriefRouter(options.briefs, options.idempotency));
+  router.use(
+    createBriefRouter(options.briefs, options.idempotency, async (briefId) => {
+      // Both cascades run even if the first fails (each is retried by its own sweep paths).
+      try {
+        await options.interviews.onBriefClosed(briefId);
+      } finally {
+        await options.collaboration?.requests.onBriefClosed(briefId);
+      }
+    }),
+  );
   router.use(createResumeRouter(options.resumes, options.resumeUploadLimiter));
   router.use(
     createRecommendationRouter(options.recommendations, options.idempotency, options.searchLimiter),
   );
+  router.use(
+    createInterviewRouter(options.interviews, options.idempotency, options.interviewLimiters),
+  );
+  if (options.collaboration) {
+    router.use(
+      createCollaborationRouter(
+        options.collaboration.requests,
+        options.collaboration.sprints,
+        options.idempotency,
+      ),
+    );
+  }
+  if (options.safety) router.use(createSafetyRouter(options.safety, options.idempotency));
   options.extraRoutes?.(router);
   return router;
 }

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import type { RequestHandler } from 'express';
 
 /**
@@ -8,6 +8,9 @@ import type { RequestHandler } from 'express';
 export const requestContext: RequestHandler = (_req, res, next) => {
   const requestId = randomUUID();
   res.locals.requestId = requestId;
+  // Per-response CSP nonce for style elements created by our own bundled code (Monaco editor);
+  // scripts stay 'self'-only. Injected into the SPA shell by static-web.ts.
+  res.locals.cspNonce = randomBytes(16).toString('base64');
   res.setHeader('X-Request-Id', requestId);
   next();
 };

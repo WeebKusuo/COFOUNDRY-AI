@@ -83,18 +83,23 @@ describe('workspace layouts (signed in)', () => {
     expect(within(nav).queryByRole('link', { name: 'Moderator' })).not.toBeInTheDocument();
   });
 
-  it('marks the active nav item and shows an honest planned-screen state', async () => {
-    installFakeApi({ user: demoUser(['founder']) });
-    renderRoute('/founder/interviews');
+  it('marks the active nav item; every nav destination is a built screen', async () => {
+    installFakeApi({
+      user: demoUser(['founder']),
+      routes: (m, p) =>
+        m === 'GET' && p === '/match-requests'
+          ? { status: 200, body: { data: [], nextCursor: null, requestId: 'r' } }
+          : undefined,
+    });
+    renderRoute('/founder/requests');
     const nav = (await screen.findAllByRole('navigation', { name: /founder/i }))[0]!;
-    expect(within(nav).getByRole('link', { name: 'Interviews' })).toHaveAttribute(
+    expect(within(nav).getByRole('link', { name: 'Requests' })).toHaveAttribute(
       'aria-current',
       'page',
     );
     expect(within(nav).getByRole('link', { name: 'Overview' })).not.toHaveAttribute('aria-current');
-    expect(screen.getByText('Not available yet')).toBeInTheDocument();
-    // No dead action buttons on planned screens.
-    expect(within(screen.getByRole('main')).queryAllByRole('button')).toHaveLength(0);
+    expect(await screen.findByText('No collaboration requests yet')).toBeInTheDocument();
+    expect(screen.queryByText('Not available yet')).not.toBeInTheDocument();
   });
 
   it('opens and closes the mobile navigation', async () => {

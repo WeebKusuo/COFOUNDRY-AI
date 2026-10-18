@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Lock } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 import {
   INDUSTRY_LABELS,
   MISSION_LABELS,
@@ -8,8 +8,10 @@ import {
   formatMatchScore,
   type MatchComponents,
   type MatchWeights,
+  type InterviewSummary,
   type RecommendationEntryView,
 } from '@cofoundry/shared';
+import { InviteAction } from '../interviews/InviteAction';
 import { Badge, Button, ExternalLink } from '../../components/ui';
 import { cn } from '../../lib/cn';
 
@@ -79,11 +81,13 @@ export function CandidateCard({
   entry,
   rank,
   usable,
+  invite,
 }: {
   entry: RecommendationEntryView;
   rank: number;
   /** False once the batch expired: invitations need a fresh search. */
   usable: boolean;
+  invite: { briefId: string; batchId: string; existing: InterviewSummary | undefined };
 }) {
   const [open, setOpen] = useState(false);
   const detailId = useId();
@@ -192,19 +196,15 @@ export function CandidateCard({
           >
             {open ? 'Hide details' : 'View details'}
           </Button>
-          <Button
-            size="sm"
-            disabled
-            icon={<Lock className="size-4" aria-hidden="true" />}
-            aria-describedby={`${detailId}-invite`}
-          >
-            Invite to interview
-          </Button>
-          <span id={`${detailId}-invite`} className="text-xs text-ink-muted">
-            {usable
-              ? 'Not available yet: interview invitations arrive in a later phase.'
-              : 'These results expired. Run a new search before inviting anyone.'}
-          </span>
+          <InviteAction
+            briefId={invite.briefId}
+            batchId={invite.batchId}
+            candidateUserId={entry.candidateUserId}
+            displayName={p.displayName}
+            usable={usable}
+            existing={invite.existing}
+            describedById={`${detailId}-invite`}
+          />
         </div>
 
         {open ? <CandidateDetail id={detailId} entry={entry} /> : null}

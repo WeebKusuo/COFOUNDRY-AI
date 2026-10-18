@@ -131,18 +131,22 @@ describe('sign out and expiry', () => {
   it('returns to sign-in with an explanation when the session expires', async () => {
     const { state } = installFakeApi({ user: demoUser(['founder']) });
     const { container } = renderRoute('/founder/requests');
-    expect(await screen.findByRole('heading', { level: 1, name: 'Requests' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Collaboration requests' }),
+    ).toBeInTheDocument();
     state.expire();
     // Any API call now answers 401 (the periodic /me check, or any screen's request).
     await act(async () => {
       await api.get('/me').catch(() => undefined);
     });
     expect(await screen.findByText('Your session ended')).toBeInTheDocument();
-    expect(container.textContent).not.toContain('Collaboration requests you sent');
+    expect(container.textContent).not.toContain('Requests you sent after reviewing');
     // After signing in again the user returns to the page they were on.
     const fake = installFakeApi({ password: 'right-password' });
     await fillAndSubmit(EMAIL, 'right-password');
-    expect(await screen.findByRole('heading', { level: 1, name: 'Requests' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Collaboration requests' }),
+    ).toBeInTheDocument();
     expect(fake.state.user).not.toBeNull();
   });
 });

@@ -11,11 +11,7 @@ import { createMemoryFileStorage } from '../src/resumes/storage.js';
 import { createRateLimiter } from '../src/http/middleware/rate-limit.js';
 import { looksLikePdf } from '../src/resumes/service.js';
 import { createPdfTextExtractor, type PdfTextExtractor } from '../src/resumes/extract.js';
-import {
-  buildResumeQuestionInput,
-  resolveResumeBinding,
-} from '../src/interviews/resume-question-input.js';
-import { checkQuestionEvidence, questionGenerationOutputSchema } from '../src/ai/contracts.js';
+import { prepareResumeForInterview, readinessOf } from '../src/interviews/resume.js';
 import type { UserRecord } from '../src/auth/store.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -211,10 +207,9 @@ describe('resume upload validation', () => {
     const res = await upload(c, fixture('resume-no-text'));
     expect(res.status).toBe(200);
     expect(res.body.data.resume.extraction).toMatchObject({ status: 'no_text', textChars: 0 });
-    const binding = await resolveResumeBinding(h.resumes, candidate.id);
-    expect(binding).toEqual({
-      binding: { mode: 'profile_only', resumeRef: null, reason: 'no_text' },
-      material: null,
+    expect(await prepareResumeForInterview(h.resumes, candidate.id, [])).toEqual({
+      ready: false,
+      reason: 'no_text',
     });
   });
 
@@ -411,16 +406,18 @@ describe('access control', () => {
 
 describe('interview-processing integration point', () => {
   it('reports readiness: no resume, consent missing and ready with an exact reference', async () => {
-    expect((await resolveResumeBinding(h.resumes, candidate.id)).binding).toMatchObject({
-      mode: 'profile_only',
-      reason: 'no_resume',
+    const none = await prepareResumeForInterview(h.resumes, candidate.id, []);
+    expect(none).toEqual({ ready: false, reason: 'no_resume' });
+    expect(readinessOf(none)).toMatchObject({
+      ready: false,
+      message: expect.stringMatching(/Upload your English resume/),
     });
     const c = await as('cand@test.example');
     const up = await upload(c, fixture('resume-text'));
-    const ready = await resolveResumeBinding(h.resumes, candidate.id);
-    expect(ready.binding).toEqual({
-      mode: 'resume_based',
-      resumeRef: {
+    const ready = await prepareResumeForInterview(h.resumes, candidate.id, []);
+    expect(ready).toMatchObject({
+      ready: true,
+      ref: {
         resumeVersion: 1,
         textSha256: up.body.data.resume.extraction.textSha256,
         extractorVersion: up.body.data.resume.extraction.extractorVersion,
@@ -430,90 +427,29 @@ describe('interview-processing integration point', () => {
       { userId: candidate.id, purpose: 'resume_processing', targetId: candidate.id },
       new Date(),
     );
-    expect((await resolveResumeBinding(h.resumes, candidate.id)).binding).toMatchObject({
-      mode: 'profile_only',
+    expect(await prepareResumeForInterview(h.resumes, candidate.id, [])).toEqual({
+      ready: false,
       reason: 'consent_missing',
     });
   });
 
-  it('builds a question-generation input with no identity, contact details or links', async () => {
+  it('prepares interview resume text without contact details, links or the candidate name', async () => {
     const c = await as('cand@test.example');
     await upload(c, fixture('resume-text'));
-    const { material } = await resolveResumeBinding(h.resumes, candidate.id);
-    const input = buildResumeQuestionInput({
-      material: material!,
-      profile: {
-        skills: [{ skillId: 'nodejs', level: 4 }],
-        projects: [
-          {
-            title: 'Ledger',
-            description: 'Mail me at me@example.com or see https://example.dev/ledger for code.',
-            skillTags: ['nodejs'],
-          },
-        ],
-      },
-      requiredSkills: [{ skillId: 'rest-api', level: 3, importance: 1, mandatory: true }],
-      questionCount: 4,
-    });
-    const json = JSON.stringify(input);
+    const prepared = await prepareResumeForInterview(h.resumes, candidate.id, ['Riya Demo']);
+    expect(prepared.ready).toBe(true);
+    const text = prepared.ready ? prepared.text : '';
     for (const leak of [
       candidate.id,
       'cand@test.example',
       'riya.demo@example.com',
       '98765',
       'https://',
-      'me@example.com',
+      'Riya',
     ]) {
-      expect(json).not.toContain(leak);
+      expect(text).not.toContain(leak);
     }
-    expect(input).toMatchObject({
-      contractVersion: 'ai-interview-contract-v1',
-      roleKey: 'backend-node-v1',
-      brief: { requiredSkills: [{ skillId: 'rest-api', level: 3, importance: 1 }] },
-      constraints: { questionCount: 4 },
-    });
-    expect(() =>
-      buildResumeQuestionInput({
-        ...{ material: material!, profile: { skills: [], projects: [] }, requiredSkills: [] },
-        questionCount: 11,
-      }),
-    ).toThrow(RangeError);
-
-    // Generated questions must quote the resume exactly.
-    const output = questionGenerationOutputSchema.parse({
-      questions: [
-        {
-          id: 'Q1',
-          prompt: 'How did you test the REST API?',
-          targetSkills: ['testing'],
-          resumeEvidence: 'Built a Node.js REST API',
-          difficulty: 3,
-        },
-        {
-          id: 'Q2',
-          prompt: 'Tell me about your Kafka work.',
-          targetSkills: ['system-design'],
-          resumeEvidence: 'Kafka streams at scale',
-          difficulty: 4,
-        },
-        {
-          id: 'Q1',
-          prompt: 'Duplicate id question here?',
-          targetSkills: ['git'],
-          resumeEvidence: 'Skills: Node.js, TypeScript',
-          difficulty: 1,
-        },
-      ],
-    });
-    const checked = checkQuestionEvidence(output, input);
-    expect(checked.accepted.map((q) => q.id)).toEqual(['Q1']);
-    expect(checked.rejected.map((r) => r.reason)).toEqual([
-      'evidence_not_in_resume',
-      'duplicate_id',
-    ]);
-    expect(
-      questionGenerationOutputSchema.safeParse({ questions: [{ id: 'Q1', prompt: 'x' }] }).success,
-    ).toBe(false);
+    expect(text).toMatch(/Node\.js/);
   });
 });
 

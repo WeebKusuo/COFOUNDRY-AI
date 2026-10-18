@@ -95,6 +95,29 @@ export class ResumeService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
+  private readonly changeListeners: Array<(userId: string) => Promise<void>> = [];
+
+  /**
+   * Called after a candidate's resume was replaced or deleted (e.g. interviews drop material
+   * prepared from the previous version). Listener failures are logged, never thrown.
+   */
+  onChanged(listener: (userId: string) => Promise<void>): void {
+    this.changeListeners.push(listener);
+  }
+
+  private async notifyChanged(userId: string): Promise<void> {
+    for (const listener of this.changeListeners) {
+      try {
+        await listener(userId);
+      } catch (err) {
+        this.logger.warn(
+          { err: err instanceof Error ? err.name : 'error' },
+          'resume change listener failed',
+        );
+      }
+    }
+  }
+
   private async view(userId: string, record: ResumeRecord | null): Promise<CandidateResumeData> {
     const consent = await this.profiles.hasActiveConsent(consentKey(userId));
     return {
@@ -167,6 +190,7 @@ export class ResumeService {
       throw this.conflict();
     }
     if (saved.replacedStorageKey) await this.deleteFile(saved.replacedStorageKey);
+    await this.notifyChanged(user.id);
     return this.view(user.id, saved.record);
   }
 
@@ -174,6 +198,7 @@ export class ResumeService {
     const removedKey = await this.resumes.clear(user.id);
     if (removedKey) await this.deleteFile(removedKey);
     await this.profiles.withdrawConsent(consentKey(user.id), this.now());
+    await this.notifyChanged(user.id);
   }
 
   async file(user: UserRecord): Promise<{ bytes: Buffer; filename: string }> {

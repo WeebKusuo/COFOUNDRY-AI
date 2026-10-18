@@ -124,7 +124,15 @@ function briefId(raw: string): string {
 const newId = () => new mongoose.Types.ObjectId().toHexString();
 
 /** Section 18 brief routes. All require a signed-in session (deny-by-default in v1). */
-export function createBriefRouter(briefs: BriefService, idempotency: IdempotencyStore): Router {
+/**
+ * @param onClosed called after a brief is closed (v3.0 Section 06: cancels its pre-submit
+ * interviews). Acceptance and start also re-check the brief, so a failed hook cannot leak.
+ */
+export function createBriefRouter(
+  briefs: BriefService,
+  idempotency: IdempotencyStore,
+  onClosed: (briefId: string) => Promise<unknown> = async () => undefined,
+): Router {
   const router = Router();
 
   router.get(
@@ -219,10 +227,11 @@ export function createBriefRouter(briefs: BriefService, idempotency: Idempotency
     status: 200,
     data: await briefs.publish(user, id, (body as z.infer<typeof publishBody>).expectedVersion),
   }));
-  transition('close', closeBody, async (user, id, body) => ({
-    status: 200,
-    data: await briefs.close(user, id, (body as z.infer<typeof closeBody>).reason),
-  }));
+  transition('close', closeBody, async (user, id, body) => {
+    const data = await briefs.close(user, id, (body as z.infer<typeof closeBody>).reason);
+    await onClosed(id);
+    return { status: 200, data };
+  });
   transition('clone', emptyBody, async (user, id, _body, newBriefId) => ({
     status: 201,
     data: await briefs.clone(user, id, newBriefId),

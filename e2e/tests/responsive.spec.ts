@@ -98,3 +98,53 @@ test('the candidates dashboard fits a phone screen', async ({ page }) => {
   );
   expect(overflow).toBe(0);
 });
+
+test('the interview inbox and report fit a phone screen', async ({ page }) => {
+  const overflow = () =>
+    page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+  // Runs after the desktop interview journey, which leaves Asha with a submitted interview.
+  await page.goto('/sign-in');
+  await page.getByLabel('Email').fill(ACCOUNTS.candidate);
+  await page.getByLabel('Password', { exact: false }).first().fill(E2E_PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Candidate workspace' })).toBeVisible();
+  await page.goto('/candidate/inbox');
+  await expect(page.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible();
+  expect(await overflow()).toBe(0);
+  const link = page.getByRole('link', { name: 'PayPilot payment reconciliation API' });
+  if ((await link.count()) > 0) {
+    await link.first().click();
+    await expect(page.getByRole('heading', { name: 'Scoring methodology' })).toBeVisible({
+      timeout: 30_000,
+    });
+    await page.getByRole('button', { name: 'Show evaluation' }).first().click();
+    expect(await overflow()).toBe(0);
+  }
+});
+
+test('matches, the sprint record and the safety page fit a phone screen', async ({ page }) => {
+  const overflow = () =>
+    page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+  // Runs after the desktop journey, which leaves Asha with a completed trial sprint.
+  await page.goto('/sign-in');
+  await page.getByLabel('Email').fill(ACCOUNTS.candidate);
+  await page.getByLabel('Password', { exact: false }).first().fill(E2E_PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Candidate workspace' })).toBeVisible();
+  await page.goto('/candidate/matches');
+  await expect(page.getByRole('heading', { level: 1, name: 'Matches' })).toBeVisible();
+  expect(await overflow()).toBe(0);
+  const link = page.getByRole('link', { name: /PayPilot payment reconciliation API/ });
+  if ((await link.count()) > 0) {
+    await link.first().click();
+    await expect(page.getByRole('heading', { name: 'Trial sprint' })).toBeVisible();
+    expect(await overflow()).toBe(0);
+  }
+  await page.goto('/candidate/account');
+  await expect(page.getByRole('heading', { level: 1, name: 'Safety & account' })).toBeVisible();
+  expect(await overflow()).toBe(0);
+});

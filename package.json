@@ -13,7 +13,7 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "concurrently -k -n server,web -c blue,magenta \"npm run dev -w @cofoundry/server\" \"npm run dev -w @cofoundry/web\"",
+    "dev": "concurrently --kill-others-on-fail -n server,web,speech -c blue,magenta,green \"npm run dev -w @cofoundry/server\" \"npm run dev -w @cofoundry/web\" \"node scripts/speech-dev.mjs\"",
     "build": "npm run build -w @cofoundry/web && npm run build -w @cofoundry/server",
     "start": "node apps/server/dist/index.js",
     "db:migrate": "npm run db:migrate -w @cofoundry/server",
@@ -26,6 +26,9 @@
     "package:zip": "node scripts/package-zip.mjs",
     "db:seed": "npm run db:seed -w @cofoundry/server --",
     "test:e2e": "npm run build && playwright test -c e2e/playwright.config.ts",
+    "test:speech": "cd services/speech && python3 -m unittest discover -s tests -t .",
+    "speech:setup": "node scripts/speech-setup.mjs",
+    "speech:dev": "node scripts/speech-dev.mjs",
     "e2e:install": "playwright install chromium"
   },
   "devDependencies": {
@@ -41,5 +44,8 @@
     "prettier": "^3.9.10",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.71.2"
+  },
+  "overrides": {
+    "dompurify": "3.4.16"
   }
 }

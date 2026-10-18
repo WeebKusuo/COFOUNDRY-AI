@@ -4,6 +4,7 @@ import { Clock, FileText, RefreshCw, Search, Users } from 'lucide-react';
 import {
   GATE_LABELS,
   MATCH_LIMITATION_NOTICE,
+  type InterviewSummary,
   type RecommendationEntryView,
   type RecommendationSearchResponse,
 } from '@cofoundry/shared';
@@ -22,6 +23,7 @@ import { useMyBriefs } from '../briefs/api';
 import { formatDate } from '../briefs/status';
 import { CandidateCard } from './CandidateCard';
 import { useRecommendations, useRunSearch } from './api';
+import { useInterviews } from '../interviews/api';
 
 export function RecommendationsPage() {
   const briefs = useMyBriefs();
@@ -99,6 +101,8 @@ function Results({ briefId }: { briefId: string }) {
   const latest = useRecommendations(briefId);
   const run = useRunSearch(briefId);
   const batch = latest.data?.kind === 'results' ? latest.data.data : null;
+  const invitations = useInterviews('founder', briefId);
+  const byCandidate = new Map((invitations.data ?? []).map((i) => [i.candidateUserId, i]));
   const minutesLeft = useMinutesLeft(batch?.expiresAt ?? null);
   const expired = minutesLeft === 0;
 
@@ -169,18 +173,21 @@ function Results({ briefId }: { briefId: string }) {
             description="Complete profiles that meet every hard requirement."
             entries={batch.recommendations}
             usable={!expired}
+            invite={{ briefId, batchId: batch.batchId, byCandidate }}
           />
           <Group
             title="Provisional"
             description="No project evidence supplied. Ranked separately so missing projects never help or hurt a complete profile."
             entries={batch.provisional}
             usable={!expired}
+            invite={{ briefId, batchId: batch.batchId, byCandidate }}
           />
           <Group
             title="Near matches"
             description="Below a time target you did not make mandatory. The shortfall is listed on each card."
             entries={batch.nearMatches}
             usable={!expired}
+            invite={{ briefId, batchId: batch.batchId, byCandidate }}
           />
           <p className="text-sm text-ink-muted">{MATCH_LIMITATION_NOTICE}</p>
         </>
@@ -252,11 +259,13 @@ function Group({
   description,
   entries,
   usable,
+  invite,
 }: {
   title: string;
   description: string;
   entries: RecommendationEntryView[];
   usable: boolean;
+  invite: { briefId: string; batchId: string; byCandidate: Map<string, InterviewSummary> };
 }) {
   return (
     <section aria-label={title} className="flex flex-col gap-4">
@@ -275,7 +284,17 @@ function Group({
       ) : (
         <ol className="flex flex-col gap-4">
           {entries.map((entry, i) => (
-            <CandidateCard key={entry.candidateUserId} entry={entry} rank={i + 1} usable={usable} />
+            <CandidateCard
+              key={entry.candidateUserId}
+              entry={entry}
+              rank={i + 1}
+              usable={usable}
+              invite={{
+                briefId: invite.briefId,
+                batchId: invite.batchId,
+                existing: invite.byCandidate.get(entry.candidateUserId),
+              }}
+            />
           ))}
         </ol>
       )}

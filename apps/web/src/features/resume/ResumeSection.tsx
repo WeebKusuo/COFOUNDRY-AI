@@ -25,13 +25,22 @@ import { formatDate } from '../briefs/status';
  * Private resume management inside the candidate profile (Phase 4 amendment). The resume is
  * independent of the profile save: uploads, replacements and deletion take effect immediately.
  */
-export function ResumeSection() {
+export function ResumeSection({
+  title = 'Resume',
+  description = 'A private PDF used only to prepare interview questions about your projects and experience. AI interviews need one.',
+  onChanged,
+}: {
+  title?: string;
+  description?: string;
+  /** Called after a successful upload, replacement or deletion. */
+  onChanged?: () => void;
+} = {}) {
   const query = useResume();
   return (
     <Card as="section" aria-label="Resume">
       <CardHeader
-        title="Resume (optional)"
-        description="A private PDF used only to prepare interview questions about your experience."
+        title={title}
+        description={description}
         action={
           <Badge tone="info" icon={<ShieldCheck className="size-3.5" aria-hidden="true" />}>
             Private
@@ -47,7 +56,7 @@ export function ResumeSection() {
           retrying={query.isFetching}
         />
       ) : (
-        <ResumeManager state={query.data} />
+        <ResumeManager state={query.data} onChanged={onChanged} />
       )}
     </Card>
   );
@@ -61,7 +70,13 @@ function clientFileError(file: File): string | null {
   return null;
 }
 
-function ResumeManager({ state }: { state: CandidateResumeData }) {
+function ResumeManager({
+  state,
+  onChanged,
+}: {
+  state: CandidateResumeData;
+  onChanged: (() => void) | undefined;
+}) {
   const upload = useUploadResume();
   const remove = useDeleteResume();
   const inputId = useId();
@@ -91,6 +106,7 @@ function ResumeManager({ state }: { state: CandidateResumeData }) {
       setShowText(false);
       if (inputRef.current) inputRef.current.value = '';
       setDone('uploaded');
+      onChanged?.();
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -109,6 +125,7 @@ function ResumeManager({ state }: { state: CandidateResumeData }) {
       setShowText(false);
       setConsent(false);
       setDone('deleted');
+      onChanged?.();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Deleting failed. Try again.');
     }
@@ -127,8 +144,8 @@ function ResumeManager({ state }: { state: CandidateResumeData }) {
       {resume ? <ResumeDetails resume={resume} /> : null}
       {!resume ? (
         <p className="text-sm text-ink-muted">
-          No resume uploaded. That’s fine: interviews can use your profile skills and projects
-          instead.
+          No resume uploaded yet. AI interviews prepare their questions from your resume, so you
+          will need one before starting an interview.
         </p>
       ) : null}
 
@@ -231,8 +248,8 @@ function ResumeManager({ state }: { state: CandidateResumeData }) {
             </div>
           }
         >
-          The file and its extracted text are removed now. Future interviews will use your profile
-          instead.
+          The file and its extracted text are removed now. You will need to upload a resume again
+          before your next interview.
         </Alert>
       ) : null}
 

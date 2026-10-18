@@ -76,7 +76,11 @@ describe('security headers', () => {
     expect(csp).toContain("connect-src 'self'");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).not.toContain('unsafe-eval');
-    expect(csp).not.toContain('unsafe-inline');
+    // Scripts and style elements never allow inline code; style elements need this response's
+    // nonce. Only style ATTRIBUTES are allowed inline (the Monaco code editor needs them).
+    expect(csp).toContain("script-src 'self';");
+    expect(csp).toMatch(/style-src 'self' 'nonce-[A-Za-z0-9+/=]{24}';/);
+    expect(csp.replace("style-src-attr 'unsafe-inline'", '')).not.toContain('unsafe-inline');
     expect(res.headers['x-content-type-options']).toBe('nosniff');
     expect(res.headers['referrer-policy']).toBe('no-referrer');
   });

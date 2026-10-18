@@ -109,6 +109,13 @@ export class BriefService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
+  /** Phase 13: completed-trial counts come from sprint records (wired after construction). */
+  private completedTrials: (founderUserId: string) => Promise<number> = async () => 0;
+
+  attachCompletedTrials(count: (founderUserId: string) => Promise<number>): void {
+    this.completedTrials = count;
+  }
+
   private async owned(user: UserRecord, id: string): Promise<BriefRecord> {
     const record = await this.briefs.findById(id);
     if (!record || record.founderUserId !== user.id) throw notFound();
@@ -268,7 +275,7 @@ export class BriefService {
   }
 
   /** Section 06 teaser projection. */
-  private async preview(record: BriefRecord, founder: UserRecord): Promise<BriefPreview> {
+  async preview(record: BriefRecord, founder: UserRecord): Promise<BriefPreview> {
     const founderProfile = await this.profiles.findFounder(founder.id);
     return {
       id: record.id,
@@ -289,8 +296,8 @@ export class BriefService {
         displayName: founder.displayName,
         demoAccount: founder.accountMode === 'demo',
         companyUrl: founderProfile?.companyUrl ?? null,
-        // Counted from completed sprint records; none can exist before the sprint phase.
-        completedSprintCount: 0,
+        // "Completed trials": completed sprint records irrespective of outcome (Section 13).
+        completedSprintCount: await this.completedTrials(founder.id),
       },
       publishedAt: record.publishedAt?.toISOString() ?? null,
     };

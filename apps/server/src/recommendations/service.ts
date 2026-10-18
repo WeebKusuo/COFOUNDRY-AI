@@ -27,12 +27,12 @@ const notFound = () => new AppError('NOT_FOUND', 'The requested resource was not
 const stale = (message = 'These results are out of date. Run a new search.') =>
   new AppError('STALE_RECOMMENDATION', message);
 
-interface VisibleCandidate {
+export interface VisibleCandidate {
   user: UserRecord;
   profile: CandidateProfileRecord;
 }
 
-function toMatchBrief(b: BriefRecord): MatchBrief {
+export function toMatchBrief(b: BriefRecord): MatchBrief {
   return {
     requiredSkills: b.requiredSkills,
     teamSkills: b.teamSkills,
@@ -45,7 +45,7 @@ function toMatchBrief(b: BriefRecord): MatchBrief {
   };
 }
 
-function toMatchCandidate(v: VisibleCandidate): MatchCandidate | null {
+export function toMatchCandidate(v: VisibleCandidate): MatchCandidate | null {
   const p = v.profile;
   // A discoverable profile always has these (Section 03); anything else is not matchable.
   if (p.availableHoursPerWeek === null || p.commitmentMonths === null) return null;
@@ -303,6 +303,19 @@ export class RecommendationService {
       throw stale('This candidate no longer meets the brief’s requirements.');
     }
     return { entry, profileRevision: entry.profileRevision, briefVersion: batch.briefVersion };
+  }
+
+  /**
+   * Phase 14: whether `candidateUserId` appears in the latest recommendation batch of one of the
+   * founder's briefs (legitimate visibility for blocking or reporting from the results page).
+   */
+  async recentlyRecommended(founderUserId: string, candidateUserId: string): Promise<boolean> {
+    const briefs = await this.briefs.listByFounder(founderUserId, { after: null, limit: 50 });
+    for (const b of briefs) {
+      const batch = await this.batches.findLatestForBrief(b.id);
+      if (batch?.entries.some((e) => e.candidateUserId === candidateUserId)) return true;
+    }
+    return false;
   }
 
   /** Retention job (Section 24): personal entry contents are removed after 24 hours. */

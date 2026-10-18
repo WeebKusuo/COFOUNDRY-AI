@@ -44,6 +44,11 @@ export interface IdentityStore {
   setSessionCsrf(id: string, csrfTokenHash: string): Promise<boolean>;
   deleteSession(id: string): Promise<void>;
   deleteSessionsForUser(userId: string): Promise<number>;
+  /**
+   * Moderator suspension (Section 21): status -> suspended and authVersion + 1, so every existing
+   * session is rejected even before it is deleted. Returns false for an unknown user.
+   */
+  suspendUser(userId: string): Promise<boolean>;
   /** Deletes sessions past their absolute expiry, or signed-in sessions idle since `idleBefore`. */
   deleteExpiredSessions(now: Date, idleBefore: Date): Promise<number>;
 }
@@ -124,6 +129,14 @@ export function createMongoIdentityStore(conn: Connection): IdentityStore {
     },
     async deleteSession(id) {
       await Session.deleteOne({ _id: id }).exec();
+    },
+    async suspendUser(userId) {
+      if (!isObjectId(userId)) return false;
+      const res = await User.updateOne(
+        { _id: new mongoose.Types.ObjectId(userId) },
+        { $set: { status: 'suspended' }, $inc: { authVersion: 1 } },
+      ).exec();
+      return res.matchedCount > 0;
     },
     async deleteSessionsForUser(userId) {
       if (!isObjectId(userId)) return 0;

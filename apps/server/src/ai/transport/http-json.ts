@@ -78,13 +78,18 @@ export function createHttpJsonTransport(options: HttpJsonTransportOptions): Http
   };
 }
 
-async function readCapped(response: Response, maxBytes: number): Promise<string> {
+export async function readCapped(response: Response, maxBytes: number): Promise<string> {
+  return (await readCappedBytes(response, maxBytes)).toString('utf8');
+}
+
+/** Reads a response body as bytes, refusing anything larger than maxBytes. */
+export async function readCappedBytes(response: Response, maxBytes: number): Promise<Buffer> {
   const declared = Number(response.headers.get('content-length') ?? '0');
   if (declared > maxBytes) {
     await response.body?.cancel().catch(() => undefined);
     throw new ProviderCallError('invalid_output', 'Model service response is too large.');
   }
-  if (!response.body) return '';
+  if (!response.body) return Buffer.alloc(0);
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -98,5 +103,5 @@ async function readCapped(response: Response, maxBytes: number): Promise<string>
     }
     chunks.push(value);
   }
-  return Buffer.concat(chunks).toString('utf8');
+  return Buffer.concat(chunks);
 }

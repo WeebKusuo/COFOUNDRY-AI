@@ -67,6 +67,13 @@ export class ProfileService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
+  /** Phase 14: a block in either direction hides current profiles (Sections 18, 21). */
+  private isBlocked: (a: string, b: string) => Promise<boolean> = async () => false;
+
+  attachBlocks(isBlocked: (a: string, b: string) => Promise<boolean>): void {
+    this.isBlocked = isBlocked;
+  }
+
   private async toCandidateData(
     userId: string,
     record: CandidateProfileRecord | null,
@@ -202,8 +209,7 @@ export class ProfileService {
    *  - the target is an active candidate in the viewer's cohort whose profile is discoverable with
    *    an active disclosure consent.
    * Everything else — unknown, private, suspended, other-cohort or founder profiles — is 404, so
-   * existence is never confirmed. Blocks and established-participant access arrive with the
-   * features that create those relationships.
+   * existence is never confirmed. A block in either direction also hides it (Phase 14).
    */
   async getPublic(viewer: UserRecord, targetUserId: string): Promise<ProfilePublic> {
     const target =
@@ -211,6 +217,7 @@ export class ProfileService {
     if (!target || target.status !== 'active') throw notFound();
     const self = target.id === viewer.id;
     if (!self && target.cohortId !== viewer.cohortId) throw notFound();
+    if (!self && (await this.isBlocked(viewer.id, target.id))) throw notFound();
 
     let candidate: ProfilePublic['candidate'] = null;
     if (target.roles.includes('candidate')) {

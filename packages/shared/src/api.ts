@@ -24,6 +24,9 @@ export const ERROR_CODES = [
   'UPSTREAM_FAILED',
   'SERVICE_UNAVAILABLE',
   'CAPACITY_LIMIT',
+  'RESUME_REQUIRED',
+  'PREPARATION_REQUIRED',
+  'ACTIVE_ELSEWHERE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
@@ -51,6 +54,9 @@ export const ERROR_STATUS: Readonly<Record<ErrorCode, number>> = Object.freeze({
   UPSTREAM_FAILED: 502,
   SERVICE_UNAVAILABLE: 503,
   CAPACITY_LIMIT: 503,
+  RESUME_REQUIRED: 409,
+  PREPARATION_REQUIRED: 409,
+  ACTIVE_ELSEWHERE: 409,
 });
 
 /** Field path (dot notation) -> human-readable messages. */

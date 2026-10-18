@@ -58,6 +58,12 @@ export class MemoryIdentityStore implements IdentityStore {
   async deleteSession(id: string) {
     this.sessions.delete(id);
   }
+  async suspendUser(userId: string) {
+    const u = this.users.get(userId);
+    if (!u) return false;
+    this.users.set(userId, { ...u, status: 'suspended', authVersion: u.authVersion + 1 });
+    return true;
+  }
   async deleteSessionsForUser(userId: string) {
     let n = 0;
     for (const [id, s] of this.sessions) {

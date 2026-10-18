@@ -19,6 +19,29 @@ import { createLocalFileStorage } from './resumes/storage.js';
 import { createMongoResumeStore } from './resumes/store.js';
 import { RecommendationService } from './recommendations/service.js';
 import { createMongoRecommendationStore } from './recommendations/store.js';
+import { createSpeechServices } from './speech/services.js';
+import { createCodeJudge } from './coding/index.js';
+import { InterviewService } from './interviews/service.js';
+import { EvaluationWorker } from './interviews/evaluation.js';
+import {
+  createMongoEvaluationJobStore,
+  createMongoInterviewStore,
+  createMongoReportStore,
+} from './interviews/store.js';
+import { createMongoAuditStore } from './audit/audit.js';
+import {
+  createMongoMatchRequestStore,
+  createMongoMatchStore,
+  createMongoSprintStore,
+} from './collaboration/store.js';
+import { createMongoTransactionRunner } from './db/transactions.js';
+import { blockPolicyFromStore } from './safety/blocks.js';
+import {
+  createMongoBlockStore,
+  createMongoRelationshipGuardStore,
+  createMongoSafetyCaseStore,
+} from './safety/store.js';
+import { buildCollaborationAndSafety } from './safety/wiring.js';
 
 /**
  * Process entry point. Fails fast (exit 1) when configuration is invalid, MongoDB is unreachable,
@@ -30,7 +53,19 @@ async function main(): Promise<void> {
   logger.info(describeConfig(config), 'starting cofoundry server');
 
   // Resolve AI adapters up front so an unknown provider label fails startup, not a later request.
-  const ai = createAiRegistry(config.llm);
+  const ai = createAiRegistry({
+    provider: config.llm.provider,
+    interviewerModel: config.llm.interviewerModel,
+    evaluatorModel: config.llm.evaluatorModel,
+    apiKey: config.llm.apiKey,
+    baseUrl: config.llm.baseUrl,
+    allowInsecureHttp: !config.isProduction,
+  });
+  const speech = createSpeechServices(config.speech);
+  const judge = createCodeJudge(config.codeExecution);
+  if (!judge.available) {
+    logger.warn('code execution is DISABLED: no secure sandbox (Judge0) configured');
+  }
   logger.info(
     { providers: ai.describe().map((d) => `${d.capability}=${d.providerId}`) },
     'ai providers resolved',
@@ -64,11 +99,13 @@ async function main(): Promise<void> {
   const profiles = new ProfileService(profileStore, identity);
   const briefStore = createMongoBriefStore(conn);
   const briefs = new BriefService(briefStore, identity, profileStore);
+  const blockStore = createMongoBlockStore(conn);
   const recommendations = new RecommendationService(
     createMongoRecommendationStore(conn),
     briefStore,
     identity,
     profileStore,
+    blockPolicyFromStore(blockStore),
   );
   const idempotency = createMongoIdempotencyStore(conn);
   const resumes = new ResumeService(
@@ -77,6 +114,67 @@ async function main(): Promise<void> {
     profileStore,
     createPdfTextExtractor(),
     logger.child({ component: 'resumes' }),
+  );
+  const interviewStore = createMongoInterviewStore(conn);
+  const jobs = createMongoEvaluationJobStore(conn);
+  const reports = createMongoReportStore(conn);
+  const aiCall = { timeoutMs: config.llm.timeoutMs, maxAttempts: config.llm.maxAttempts };
+  const interviewLogger = logger.child({ component: 'interviews' });
+  const interviews = new InterviewService({
+    store: interviewStore,
+    jobs,
+    reports,
+    briefStore,
+    briefs,
+    identity,
+    profiles: profileStore,
+    recommendations,
+    resumes,
+    ai,
+    aiCall,
+    speech,
+    judge,
+    logger: interviewLogger,
+  });
+  const worker = new EvaluationWorker({
+    jobs,
+    store: interviewStore,
+    reports,
+    interviews,
+    identity,
+    ai,
+    aiCall,
+    judge,
+    logger: interviewLogger,
+  });
+  worker.start();
+  if (!tx.supported) {
+    logger.warn(
+      'collaboration writes run WITHOUT multi-document transactions (development only); ' +
+        'unique indexes still prevent duplicates, but a crash between two writes is not rolled back',
+    );
+  }
+  const phase11 = buildCollaborationAndSafety(
+    {
+      requests: createMongoMatchRequestStore(conn),
+      matches: createMongoMatchStore(conn),
+      sprints: createMongoSprintStore(conn),
+      blocks: blockStore,
+      guards: createMongoRelationshipGuardStore(conn),
+      cases: createMongoSafetyCaseStore(conn),
+      audit: createMongoAuditStore(conn),
+      tx: createMongoTransactionRunner(conn, { atomic: tx.supported, logger }),
+    },
+    {
+      identity,
+      briefStore,
+      briefs,
+      profiles: profileStore,
+      profileService: profiles,
+      interviews,
+      recommendations,
+      logger: logger.child({ component: 'collaboration' }),
+    },
   );
   const app = createApp({
     config,
@@ -87,7 +185,30 @@ async function main(): Promise<void> {
     idempotency,
     resumes,
     recommendations,
+    interviews,
+    collaboration: { requests: phase11.collaboration, sprints: phase11.sprints },
+    safety: phase11.safety,
   });
+  // Request/sprint expiry, review/acknowledgement windows and dormant matches every 60 seconds
+  // (contract Section 25); handlers also enforce them synchronously.
+  const collaborationSweep = setInterval(() => {
+    phase11.collaboration
+      .sweep()
+      .then((r) => (r.expired || r.repaired || r.dormant) && logger.info(r, 'collaboration sweep'))
+      .catch((err: unknown) => logger.warn({ err }, 'collaboration sweep failed'));
+    phase11.sprints
+      .sweep()
+      .then((n) => n > 0 && logger.info({ cancelled: n }, 'sprint deadlines applied'))
+      .catch((err: unknown) => logger.warn({ err }, 'sprint sweep failed'));
+  }, 60_000);
+  collaborationSweep.unref();
+  // Interview deadlines and leases every 15 seconds (contract Section 25 job table).
+  const deadlines = setInterval(() => {
+    interviews
+      .sweep()
+      .catch((err: unknown) => logger.warn({ err }, 'interview deadline sweep failed'));
+  }, 15_000);
+  deadlines.unref();
 
   // Sweeper every 5 minutes: expired/idle sessions, idempotency records older than 24 h and
   // recommendation entries older than 24 h
@@ -101,6 +222,12 @@ async function main(): Promise<void> {
       .purgeExpiredEntries()
       .then((purged) => purged > 0 && logger.info({ purged }, 'recommendation entries purged'))
       .catch((err: unknown) => logger.warn({ err }, 'recommendation retention sweep failed'));
+    interviews
+      .purgeRetention()
+      .then(
+        (r) => (r.minimized > 0 || r.deleted > 0) && logger.info(r, 'interview retention applied'),
+      )
+      .catch((err: unknown) => logger.warn({ err }, 'interview retention sweep failed'));
     idempotency
       .purgeExpired(new Date())
       .then((removed) => removed > 0 && logger.info({ removed }, 'idempotency records purged'))
@@ -133,6 +260,9 @@ async function main(): Promise<void> {
     const force = setTimeout(() => process.exit(1), 10_000);
     force.unref();
     clearInterval(sweep);
+    clearInterval(deadlines);
+    clearInterval(collaborationSweep);
+    worker.stop();
     const serversClosed = Promise.all([close(server), close(internal)]);
     server.closeIdleConnections();
     await serversClosed;

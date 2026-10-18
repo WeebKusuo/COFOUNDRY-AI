@@ -1,56 +1,69 @@
 /**
- * AI provider architecture — capability ports (Phase 1: architecture only, no model calls).
+ * AI provider architecture — capability ports (Phases 7-10).
  *
- * Every AI feature is a *capability* behind a small port interface. Adapters implement ports for a
- * concrete model/API (the AI team's fine-tuned service, an external LLM, a speech API ...), so a
- * model can be swapped by configuration without touching business logic.
+ * Every LLM feature is a *capability* behind a small port interface. Adapters implement a
+ * provider (Groq's OpenAI-compatible API, a self-hosted OpenAI-compatible server, or the
+ * deterministic test double), so a model can be swapped by configuration without touching
+ * business logic. Speech-to-text, text-to-speech and code execution have their own interfaces
+ * (src/speech, src/coding) because they are not LLM calls.
  *
- * Rules that hold for every capability (Contract Sections 09, 10, 23, 24):
- *  - Adapters receive only the minimum data: no user IDs, emails, phone numbers, contact fields or
- *    full startup ideas. Candidate text is passed as delimited *data*, never as instructions.
- *  - Adapters return raw structured judgments; the backend validates them strictly (no clamping)
- *    and computes every total itself.
- *  - Technical scores, language feedback and observable presentation signals are separate outputs
- *    and are never merged into one number.
- *  - Credentials stay server-side; only metadata (provider, model, latency, tokens, error code) is
- *    logged — never prompts, answers or media.
- *
- * Question generation and adaptive follow-up use the versioned contracts in
- * packages/shared/src/interview.ts (Phase 4). The evaluation/speech/video inputs below remain
- * drafts until their phases; change them there together with their tests.
- *
- * Model policy (Phase 4 amendment): every model or AI tool adopted later must be free,
- * open-source, reasonably well-performing and preferably self-hostable, with its licence and
- * commercial-use terms verified and recorded before it is registered.
+ * Rules that hold for every capability:
+ *  - Adapters receive only the minimum data: no user ids, emails, phone numbers, contact fields,
+ *    credentials or the brief's confidential problem/solution. Candidate text (resume, answers,
+ *    code) is passed as delimited JSON *data*, never as instructions.
+ *  - Every call requires the candidate's interview consent (assessment + external processing).
+ *  - Adapters return bounded per-dimension judgments; the backend validates them strictly (no
+ *    clamping or repair) and computes every aggregate itself.
+ *  - Credentials stay server-side; only metadata (capability, provider, model, latency, tokens,
+ *    error code) is logged — never prompts, resume text, transcripts or code.
  */
 
-import type { FollowUpGenerationInput, ResumeQuestionGenerationInput } from '@cofoundry/shared';
+import type {
+  AnswerInputMode,
+  AnswerSignal,
+  CodeLanguage,
+  CodingTaskKind,
+  CodeReviewDimension,
+  CommunicationDimension,
+  QuestionType,
+  SkillId,
+  TechnicalDimension,
+  TranscriptConfidence,
+  TurnIntent,
+} from '@cofoundry/shared';
+import type { INTERVIEW_CONTRACT_VERSION, ROLE_KEY } from '@cofoundry/shared';
 
 export const AI_CAPABILITIES = [
-  'question_generation',
-  'follow_up_generation',
-  'technical_evaluation',
-  'language_evaluation',
-  'speech_analysis',
-  'video_signals',
-  'cross_validation',
+  'resume_context',
+  'question_plan',
+  'interview_turn',
+  'coding_task_selection',
+  'answer_evaluation',
+  'communication_evaluation',
+  'code_review',
 ] as const;
 export type AiCapability = (typeof AI_CAPABILITIES)[number];
 
-/** Capabilities that process audio/video and therefore need explicit media consent. */
-export const MEDIA_CAPABILITIES: ReadonlySet<AiCapability> = new Set([
-  'speech_analysis',
-  'video_signals',
+/** Capabilities served by the interviewer model; the rest use the evaluator model. */
+export const INTERVIEWER_CAPABILITIES: ReadonlySet<AiCapability> = new Set([
+  'resume_context',
+  'question_plan',
+  'interview_turn',
+  'coding_task_selection',
 ]);
 
-/**
- * Server-side provider settings (from LLM_PROVIDER / LLM_MODEL / LLM_API_KEY). Declared here so
- * the AI module has no dependency on the rest of the server; config.LlmConfig is compatible.
- */
+/** Server-side provider settings (from LLM_* environment variables; see config/env.ts). */
 export interface AiProviderSettings {
   provider: string;
-  model: string | null;
+  /** Model for question generation, follow-ups, resume context and task selection. */
+  interviewerModel: string | null;
+  /** Separately configured model for answer, communication and code evaluation. */
+  evaluatorModel: string | null;
   apiKey: string | null;
+  /** OpenAI-compatible base URL, e.g. https://api.groq.com/openai/v1 */
+  baseUrl: string | null;
+  /** Allow plain http for a self-hosted model server on localhost. */
+  allowInsecureHttp?: boolean;
 }
 
 /** The subset of the pino logger the AI module uses (metadata only — never payloads). */
@@ -60,22 +73,32 @@ export interface AiLogger {
 }
 
 export type ProviderErrorCode =
-  'disabled' | 'timeout' | 'cancelled' | 'upstream_failed' | 'invalid_output' | 'consent_missing';
+  | 'disabled'
+  | 'timeout'
+  | 'cancelled'
+  | 'rate_limited'
+  | 'upstream_failed'
+  | 'invalid_output'
+  | 'consent_missing';
 
 export interface ProviderDescriptor {
   capability: AiCapability;
-  /** Stable provider label, e.g. "disabled", "cofoundry-qgen", "openai". */
+  /** Stable provider label, e.g. "disabled", "groq", "mock". */
   providerId: string;
   /** Exact model identifier recorded on every stored artefact; null when disabled. */
   model: string | null;
-  /** Adapter version — bump when prompt/parsing behaviour changes (Section 10). */
+  /** Adapter version — bump when request/parsing behaviour changes. */
   adapterVersion: string;
+  /** Prompt version — bump when a prompt changes; stored with every output. */
+  promptVersion: string;
 }
 
 export interface CallMeta {
   providerId: string;
   model: string | null;
+  promptVersion: string;
   latencyMs: number;
+  attempts: number;
   inputTokens?: number;
   outputTokens?: number;
 }
@@ -84,17 +107,16 @@ export type ProviderResult<T> =
   | { ok: true; value: T; meta: CallMeta }
   | { ok: false; error: { code: ProviderErrorCode; message: string }; meta: CallMeta };
 
-/** Proof that the participant granted consent for this purpose (stored ConsentRecord). */
+/** Proof that the candidate granted interview consent (stored ConsentRecord). */
 export interface ConsentProof {
-  purpose: 'assessment' | 'interview_audio' | 'interview_video';
+  purpose: 'assessment';
   consentRecordId: string;
   policyVersion: string;
 }
 
 export interface CallContext {
   signal: AbortSignal;
-  /** Required for MEDIA_CAPABILITIES; checked before any adapter is called. */
-  consent?: ConsentProof;
+  consent: ConsentProof;
 }
 
 /** Raw adapter output plus optional token usage reported by the provider. */
@@ -104,72 +126,230 @@ export interface AdapterOutput {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Draft capability inputs. Outputs are validated with zod schemas owned by each phase.
+// Capability inputs (outputs: zod schemas in contracts.ts)
 // ---------------------------------------------------------------------------------------------
 
+interface Versioned {
+  contractVersion: typeof INTERVIEW_CONTRACT_VERSION;
+  roleKey: typeof ROLE_KEY;
+  language: 'en';
+}
+
+export interface RequiredSkillInput {
+  skillId: SkillId;
+  level: number;
+  importance: number;
+}
+
+/** Structure the candidate's (redacted) resume once per interview. */
+export interface ResumeContextInput extends Versioned {
+  /** Redacted resume text, delimited as data. */
+  resumeText: string;
+  truncated: boolean;
+}
+
+export interface ResumeContext {
+  skills: string[];
+  projects: Array<{
+    name: string;
+    summary: string;
+    technologies: string[];
+    contributions: string[];
+    /** Exact substring of the redacted resume text. */
+    evidence: string;
+  }>;
+  experience: Array<{ summary: string; evidence: string }>;
+  achievements: Array<{ text: string; evidence: string }>;
+}
+
+/** One planned topic slot: the server fixes the question type and difficulty range. */
+export interface QuestionPlanSlot {
+  slot: number;
+  type: QuestionType;
+  difficultyMin: number;
+  difficultyMax: number;
+}
+
 /**
- * Resume-based question generation (user's fine-tuned API). Built by
- * src/interviews/resume-question-input.ts from redacted resume text and skill data only.
+ * Prepare the opening question of every planned topic before the interview starts, grounded in
+ * the candidate's resume projects and tech stack and the role requirements.
  */
-export type QuestionGenerationInput = ResumeQuestionGenerationInput;
+export interface QuestionPlanInput extends Versioned {
+  role: { requiredSkills: RequiredSkillInput[] };
+  candidate: {
+    skills: Array<{ skillId: SkillId; level: number }>;
+    resumeContext: ResumeContext;
+  };
+  slots: QuestionPlanSlot[];
+}
 
-/** Adaptive cross-questioning from one question and its one answer (user's fine-tuned API). */
-export type FollowUpInput = FollowUpGenerationInput;
+export interface PlannedQuestion {
+  slot: number;
+  type: QuestionType;
+  topic: string;
+  difficulty: number;
+  prompt: string;
+  targetSkills: SkillId[];
+  /** Exact quote of the redacted resume text; required for resume_project. */
+  resumeEvidence: string | null;
+  expectedConcepts: string[];
+}
 
-/** Technical evaluation of one answer against a fixed question and rubric. */
-export interface TechnicalEvaluationInput {
-  questionId: string;
-  question: string;
+export interface QuestionPlanOutput {
+  questions: PlannedQuestion[];
+}
+
+export interface TurnHistoryItem {
+  index: number;
+  questionType: QuestionType;
+  topic: string;
+  intent: TurnIntent;
+  difficulty: number;
+  prompt: string;
+  /** Redacted answer text (recent turns only; null for older turns or skipped answers). */
+  answer: string | null;
+  answerStatus: 'answered' | 'skipped';
+  inputMode: AnswerInputMode | null;
+  transcriptConfidence: TranscriptConfidence | null;
+}
+
+/** Server-computed constraints the interviewer must follow (validated on the way back). */
+export interface TurnPolicy {
+  /** The question type for a new topic (the server rotates through the coverage plan). */
+  newTopicType: QuestionType;
+  /** True when follow-up depth or attempts are exhausted: the next question opens a new topic. */
+  mustChangeTopic: boolean;
+  followUpDepth: number;
+  maxFollowUpDepth: number;
+  coveredTopics: string[];
+  difficultyMin: number;
+  difficultyMax: number;
+  remainingQuestions: number;
+  remainingMinutes: number;
+  /** The conversation may end now (enough questions answered, all question types covered). */
+  mayEnd: boolean;
+  /** Required intent of a follow-up for each reading of the last answer. */
+  intentForSignal: Record<AnswerSignal, TurnIntent>;
+}
+
+export interface InterviewTurnInput extends Versioned {
+  role: { requiredSkills: RequiredSkillInput[] };
+  candidate: {
+    skills: Array<{ skillId: SkillId; level: number }>;
+    resumeContext: ResumeContext;
+  };
+  history: TurnHistoryItem[];
+  /** Index of the answer just given; null before the first question. */
+  lastAnswerIndex: number | null;
+  policy: TurnPolicy;
+  /**
+   * The prepared question for the next new topic (from the question plan), or null. When the
+   * interviewer opens a new topic, the server asks this prepared question.
+   */
+  plannedNext: { type: QuestionType; topic: string; prompt: string } | null;
+}
+
+export interface TurnQuestion {
+  type: QuestionType;
+  topic: string;
+  intent: TurnIntent;
+  difficulty: number;
+  prompt: string;
+  targetSkills: SkillId[];
+  /** Required for resume_project questions: exact quote from the resume context evidence. */
+  resumeEvidence: string | null;
+  /** Index of the question being followed up; null for a new topic. */
+  followsUp: number | null;
+  /** Hidden concepts a strong answer would cover — used by the evaluator, never shown. */
+  expectedConcepts: string[];
+}
+
+export interface InterviewTurnOutput {
+  assessment: { signal: AnswerSignal; note: string };
+  decision: 'ask' | 'end';
+  question: TurnQuestion | null;
+}
+
+export interface CodingTaskSelectionInput extends Versioned {
+  roleSkills: SkillId[];
+  candidateSkills: Array<{ skillId: SkillId; level: number }>;
+  conversation: Array<{ questionType: QuestionType; topic: string; signal: AnswerSignal }>;
+  tasks: Array<{
+    id: string;
+    title: string;
+    kind: CodingTaskKind;
+    skills: SkillId[];
+    difficulty: number;
+  }>;
+}
+
+export interface DimensionDefinitionInput {
+  label: string;
+  levels: readonly string[];
+}
+
+export interface AnswerEvaluationInput extends Versioned {
   rubricVersion: string;
-  /** Hidden expected points — service-side only, never sent to browsers. */
-  expectedPoints: string[];
-  answer: string;
+  rubric: Record<TechnicalDimension, DimensionDefinitionInput>;
+  question: {
+    type: QuestionType;
+    topic: string;
+    difficulty: number;
+    prompt: string;
+    expectedConcepts: string[];
+    resumeEvidence: string | null;
+  };
+  roleSkills: SkillId[];
+  answer: {
+    text: string;
+    inputMode: AnswerInputMode;
+    transcriptConfidence: TranscriptConfidence | null;
+    uncertainSegments: number;
+    edited: boolean;
+  };
+  /** The parent question chain this answer follows up on (bounded, redacted). */
+  relatedHistory: Array<{ prompt: string; answer: string }>;
 }
 
-/** Language detection and communication feedback — kept separate from technical scores. */
-export interface LanguageEvaluationInput {
-  answer: string;
+export interface CommunicationEvaluationInput extends Versioned {
+  rubricVersion: string;
+  rubric: Record<CommunicationDimension, DimensionDefinitionInput>;
+  answers: Array<{
+    index: number;
+    prompt: string;
+    text: string;
+    inputMode: AnswerInputMode;
+    transcriptConfidence: TranscriptConfidence | null;
+  }>;
 }
 
-/** Speech transcription. Pace and pause metrics are computed deterministically by the backend. */
-export interface SpeechAnalysisInput {
-  audio: { mimeType: string; durationMs: number; bytes: Uint8Array };
-  languageHint?: 'en' | 'hi';
-}
-
-/** Video analysis may report ONLY observable events — never cheating, confidence or emotion. */
-export const OBSERVABLE_VIDEO_EVENTS = [
-  'face_visible',
-  'face_not_visible',
-  'multiple_faces',
-  'gaze_off_screen',
-  'camera_interrupted',
-] as const;
-export type ObservableVideoEvent = (typeof OBSERVABLE_VIDEO_EVENTS)[number];
-
-export interface VideoSignalsInput {
-  /** Sampled frames or a provider-specific clip reference, never stored by the adapter. */
-  frames: Array<{ atMs: number; mimeType: string; bytes: Uint8Array }>;
-}
-
-/** Cross-validation logic supplied by the AI team (e.g. consistency of claims across answers). */
-export interface CrossValidationInput {
-  items: Array<{ questionId: string; answer: string }>;
+export interface CodeReviewInput extends Versioned {
+  rubricVersion: string;
+  rubric: Record<CodeReviewDimension, DimensionDefinitionInput>;
+  task: { title: string; kind: CodingTaskKind; prompt: string; language: CodeLanguage };
+  code: string;
+  explanation: string;
+  tests: {
+    execution: 'executed' | 'unavailable' | 'failed';
+    passed: number;
+    total: number;
+    compileError: boolean;
+  };
 }
 
 export interface CapabilityInputs {
-  question_generation: QuestionGenerationInput;
-  follow_up_generation: FollowUpInput;
-  technical_evaluation: TechnicalEvaluationInput;
-  language_evaluation: LanguageEvaluationInput;
-  speech_analysis: SpeechAnalysisInput;
-  video_signals: VideoSignalsInput;
-  cross_validation: CrossValidationInput;
+  resume_context: ResumeContextInput;
+  question_plan: QuestionPlanInput;
+  interview_turn: InterviewTurnInput;
+  coding_task_selection: CodingTaskSelectionInput;
+  answer_evaluation: AnswerEvaluationInput;
+  communication_evaluation: CommunicationEvaluationInput;
+  code_review: CodeReviewInput;
 }
 
 /**
  * One adapter per capability. `run` returns the provider's raw output; validation, timeouts,
- * consent checks and logging are applied uniformly by `invokeCapability`.
+ * consent checks, retries and logging are applied uniformly by `invokeCapability`.
  */
 export interface CapabilityAdapter<C extends AiCapability = AiCapability> {
   readonly descriptor: ProviderDescriptor & { capability: C };

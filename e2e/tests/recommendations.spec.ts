@@ -46,7 +46,9 @@ test('a founder runs a real match-v3.0 search and reads the explained results', 
   const asha = card(page, 'Asha');
   await asha.getByRole('button', { name: 'View details' }).click();
   await expect(asha.getByRole('table')).toContainText('REST APIs');
-  await expect(asha.getByRole('button', { name: 'Invite to interview' })).toBeDisabled();
+  await expect(
+    card(page, 'Dev').getByRole('button', { name: 'Invite to interview' }),
+  ).toBeEnabled();
 
   // The API is the source of truth: no email, consent or resume data in the response.
   const latest = await page.request.get(
