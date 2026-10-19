@@ -1,6 +1,6 @@
 # CoFoundry AI
 
-(missing features --  legal contract and payment
+(missing features --  legal contract and payment)
 
 Find the people your startup is missing. Test the fit. Build together.
 
