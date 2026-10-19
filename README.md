@@ -1,5 +1,7 @@
 # CoFoundry AI
 
+(missing features --  legal contract and payment
+
 Find the people your startup is missing. Test the fit. Build together.
 
 CoFoundry AI helps a founder find a backend contributor, assess fit with a transparent interview
